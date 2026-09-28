@@ -518,3 +518,15 @@ details.defs b { color: var(--text); }
 
 ol.steps { padding-left: 20px; margin: 4px 0 10px; }
 ol.steps li { margin: 6px 0; }
+
+ul.import-facts { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; font-size: 13px; }
+ul.import-facts li { padding-left: 22px; position: relative; color: var(--muted); }
+ul.import-facts li b { color: var(--text); }
+ul.import-facts li::before { position: absolute; left: 0; top: 0; font-weight: 800; }
+ul.import-facts li.ok::before { content: '✓'; color: #6ee7b7; }
+ul.import-facts li.warn::before { content: '!'; color: var(--warn); left: 5px; }
+.import-check { border-radius: 10px; padding: 10px 12px; font-size: 13px; margin: 8px 0; }
+.import-check.ok { background: rgba(52,211,153,.08); border: 1px solid rgba(52,211,153,.4); color: #a7f3d0; }
+.import-check.warn { background: rgba(251,191,36,.08); border: 1px solid rgba(251,191,36,.4); color: #fde68a; }
+
+.game-inputs input[data-abs]::placeholder { color: var(--warn); opacity: .9; font-size: 13px; }

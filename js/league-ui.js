@@ -48,7 +48,7 @@ function renderList() {
   if (!ls.length) {
     h += '<div class="card intro"><div class="intro-ic">🏆</div><h3>Run your league here</h3>' +
       '<p class="small muted">Rosters, weekly scores, handicaps and standings are figured automatically, and a recap is ready to email to the league in one tap.</p>' +
-      '<button class="btn" id="lgCreate">Create a league</button><button class="btn secondary mt8" id="lgDemo">Try it with a demo league</button></div>';
+      '<button class="btn" id="lgCreate">Create a league</button><button class="btn secondary mt8" id="lgImport">Import a league from a file</button><button class="btn secondary mt8" id="lgDemo">Try it with a demo league</button></div>';
   } else {
     h += ls.map(l => {
       const last = LG.lastScoredWeek(l);
@@ -57,12 +57,13 @@ function renderList() {
         '<div class="s">' + esc([Store.centerName(l.centerId) === '—' ? '' : Store.centerName(l.centerId), l.day + 's ' + l.time].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="s">' + plural(l.teams.length, 'team') + ' · ' + (last ? 'week ' + last + ' of ' + l.seasonWeeks + ' bowled' : 'season not started') + (me ? ' · you: ' + esc(me.name) : '') + '</div></div><span class="chev">›</span></button>';
     }).join('');
-    h += '<button class="btn mt8" id="lgCreate">+ Create a league</button>';
+    h += '<button class="btn mt8" id="lgCreate">+ Create a league</button><button class="btn secondary mt8" id="lgImport">Import a league from a file</button>';
     if (!ls.some(l => /\(demo\)/.test(l.name))) h += '<button class="btn secondary mt8" id="lgDemo">Load a demo league</button>';
   }
   el.innerHTML = h;
   el.querySelectorAll('[data-lg]').forEach(b => b.addEventListener('click', () => show('league', { id: b.dataset.lg })));
   on('lgCreate', 'click', createSheet);
+  on('lgImport', 'click', importLeagueSheet);
   on('lgDemo', 'click', () => {
     const l = LG.buildDemoLeague({ today: BB.todayISO(), centerId: (Store.state.centers[0] || {}).id || '' });
     l.sample = true;
@@ -97,7 +98,8 @@ function leagueFormHTML(l, full) {
       '<label class="field">Absent score = avg minus<input type="number" inputmode="numeric" id="lfAbsent" min="0" max="100" value="' + l.absent.pinsBelowAvg + '"></label>' +
       '<label class="field">Vacancy score<input type="number" inputmode="numeric" id="lfVacant" min="0" max="300" value="' + l.vacancy.score + '"></label>' +
       '<label class="field">Use entering avg until (games)<input type="number" inputmode="numeric" id="lfEst" min="1" max="30" value="' + l.establishGames + '"></label>' +
-      '<label class="field">Avg for new bowlers<input type="number" inputmode="numeric" id="lfDefAvg" min="0" max="300" value="' + l.defaultAvg + '"></label></div></fieldset>' +
+      '<label class="field">Avg for new bowlers<input type="number" inputmode="numeric" id="lfDefAvg" min="0" max="300" value="' + l.defaultAvg + '"></label></div>' +
+      '<label class="field">A new bowler\u2019s first night<select id="lfNewAvg"><option value="default"' + (l.newBowlerAvg !== 'firstNight' ? ' selected' : '') + '>Handicap from the average above</option><option value="firstNight"' + (l.newBowlerAvg === 'firstNight' ? ' selected' : '') + '>Handicap from that night\u2019s own average</option></select></label></fieldset>' +
       '<fieldset class="fs"><legend>Recap email</legend><label class="field">Extra recipients (league officers, center, etc.)<input type="text" id="lfCc" value="' + esc(l.ccEmails) + '" placeholder="secretary@example.com, desk@lanes.com"></label>' +
       '<div class="small muted">Bowlers with an email on the roster get the recap automatically.</div></fieldset>';
   }
@@ -123,6 +125,7 @@ function readLeagueForm(l, full) {
     l.vacancy = { score: Math.max(0, Math.min(300, intOr(val('lfVacant'), 120))) };
     l.establishGames = Math.max(1, intOr(val('lfEst'), 3));
     l.defaultAvg = Math.max(0, Math.min(300, intOr(val('lfDefAvg'), 150)));
+    l.newBowlerAvg = val('lfNewAvg') === 'firstNight' ? 'firstNight' : 'default';
     l.ccEmails = val('lfCc').trim();
   }
   return null;
@@ -235,7 +238,7 @@ function importScoresSheet(l) {
     '<p class="small muted mt0">Paste from your spreadsheet or upload a CSV with columns <b>' + esc(head.slice(0, 4).join(', ')) + '…</b> and an optional <b>Status</b> (absent / vacant). Each team in the file replaces that team\u2019s scores for that week. Bowlers not on the roster are added to their team.</p>' +
     '<button class="btn secondary small-btn" id="isTpl">Get a template with your roster</button>' +
     '<textarea id="isText" rows="8" class="mt8" placeholder="' + esc(head.join(',')) + '&#10;1,Pin Pals,Dana Ortiz,172,188,165,&#10;1,Pin Pals,Mike Kowalski,,,,absent"></textarea>' +
-    '<label class="btn secondary mt8" for="isFile">Choose CSV file…</label><input type="file" id="isFile" accept=".csv,text/csv,text/plain" hidden>' +
+    '<label class="btn secondary mt8" for="isFile">Choose a file (.xlsx or .csv)…</label><input type="file" id="isFile" accept=".xlsx,.csv,text/csv,text/plain,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>' +
     '<div class="import-preview" id="isPreview" aria-live="polite"></div><button class="btn" id="isGo" disabled>Import</button>', sh => {
     const ta = sh.querySelector('#isText');
     let parsed = null;
@@ -254,7 +257,12 @@ function importScoresSheet(l) {
       btn.textContent = 'Import ' + plural(wk.length, 'week');
     };
     ta.addEventListener('input', preview);
-    sh.querySelector('#isFile').addEventListener('change', async e => { const f = e.target.files[0]; if (f) { ta.value = await f.text(); preview(); } });
+    sh.querySelector('#isFile').addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      try { ta.value = await fileToCSV(f); } catch (err) { toast(err.message || 'Couldn\u2019t read that file', 4000); return; }
+      preview();
+    });
     sh.querySelector('#isTpl').addEventListener('click', () => {
       const csv = template();
       if (BB.EMBED) { ta.value = csv; preview(); toast('Template filled in — add scores, or copy it into a spreadsheet'); }
@@ -271,6 +279,90 @@ function importScoresSheet(l) {
     });
   });
 }
+/* ---------- files: .xlsx or .csv -> table ---------- */
+async function fileToTable(f) {
+  if (/\.xlsx$/i.test(f.name) || /spreadsheetml/.test(f.type)) {
+    if (!window.BBXlsx || typeof DecompressionStream === 'undefined') throw new Error('This browser can\u2019t open .xlsx files. Save it as CSV and try again.');
+    const wb = await window.BBXlsx.read(await f.arrayBuffer());
+    const sheet = wb.sheets.find(x => x.rows.length > 1) || wb.sheets[0];
+    if (!sheet) throw new Error('That spreadsheet is empty.');
+    return sheet.rows;
+  }
+  return LG.parseCSV(await f.text());
+}
+async function fileToCSV(f) { return LG.toCSV(await fileToTable(f)); }
+function nameFromFile(fname) {
+  const base = String(fname || '').replace(/\.[^.]+$/, '').replace(/[-_ ]?(weekly[-_ ]?scores|scores|export|stats?)$/i, '');
+  return base.split(/[-_ ]+/).filter(Boolean).map(w => (/^\d{4}$/.test(w) && +w.slice(2) === +w.slice(0, 2) + 1 ? w.slice(0, 2) + '-' + w.slice(2) : w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())).join(' ') || 'Imported league';
+}
+
+/* ---------- import a whole season from a LeagueSecretary / BLS export ---------- */
+function importLeagueSheet() {
+  let result = null, check = null, fileName = '';
+  const fmt = iso => (iso ? LG.fmtDate(iso) : '');
+  const summary = () => {
+    const r = result.report;
+    const h = r.handicap;
+    const li = (ok, txt) => '<li class="' + (ok ? 'ok' : 'warn') + '">' + txt + '</li>';
+    return '<ul class="import-facts">' +
+      li(true, '<b>' + plural(r.weeks, 'week') + '</b>' + (r.firstDate ? ' · ' + esc(fmt(r.firstDate)) + ' – ' + esc(fmt(r.lastDate)) : '') + ' · ' + esc(result.league.day) + 's') +
+      li(true, '<b>' + plural(r.teams, 'team') + '</b> of ' + r.teamSize + ', ' + r.gamesPerNight + ' games a night') +
+      li(true, '<b>' + plural(r.bowlers, 'bowler') + '</b> — ' + r.rostered + ' on rosters (from the last week\u2019s lineups), ' + plural(r.subs, 'sub')) +
+      li(!r.handicapMatch || r.handicapMatch.ok === r.handicapMatch.tot, h.enabled ? 'Handicap <b>' + h.pct + '% of ' + h.basis + '</b>, ' + esc(LG.ROUNDING_LABEL[h.rounding].toLowerCase()) + (r.handicapMatch ? ' (fits ' + r.handicapMatch.ok + ' of ' + r.handicapMatch.tot + ' rows)' : '') : '<b>Scratch</b> (no handicap)') +
+      li(!r.avgMatch || r.avgMatch.ok === r.avgMatch.tot, 'Entering averages kept for <b>' + plural(r.keepGames, 'game') + '</b>' + (r.firstNight ? '; new bowlers\u2019 first night uses their own average (' + r.newBowlers + ' bowlers)' : '')) +
+      li(true, 'Absent bowlers score <b>average − ' + r.pinsBelowAvg + '</b>') +
+      li(r.laneWeeks === r.weeks, 'Matchups read from lane pairs for <b>' + r.laneWeeks + ' of ' + r.weeks + '</b> weeks') +
+      '</ul>' +
+      (check ? (check.avgOk === check.checked && check.hcpOk === check.checked
+        ? '<div class="import-check ok">✓ BowlBoard recalculated every average and handicap: all <b>' + check.checked.toLocaleString() + '</b> lines match the file.</div>'
+        : '<div class="import-check warn">Averages match on ' + check.avgOk + ' and handicaps on ' + check.hcpOk + ' of ' + check.checked + ' lines. First difference: row ' + check.mismatches[0].row + ' (' + esc(check.mismatches[0].bowler) + ', week ' + check.mismatches[0].week + '): file ' + check.mismatches[0].fileAvg + '/' + check.mismatches[0].fileHdcp + ', BowlBoard ' + check.mismatches[0].ourAvg + '/' + check.mismatches[0].ourHdcp + '.</div>') : '') +
+      (r.warnings.length ? '<div class="small warn">' + r.warnings.map(esc).join('<br>') + '</div>' : '');
+  };
+  openSheet('<h3>Import a league from a file</h3>' +
+    '<p class="small muted mt0">Use a <b>weekly scores</b> export from LeagueSecretary.com (Excel export with Cloud Access) or from the BLS program: one row per bowler per week with Week, Date, Team, Bowler, Avg, Hdcp, G1–G3, Lane and Note. BowlBoard works out your league\u2019s rules from the numbers and checks them against every row before creating anything.</p>' +
+    '<label class="btn" for="ilFile">Choose file (.xlsx or .csv)…</label><input type="file" id="ilFile" accept=".xlsx,.csv,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" hidden>' +
+    '<div id="ilBody" aria-live="polite"></div>', sh => {
+    const body = sh.querySelector('#ilBody');
+    sh.querySelector('#ilFile').addEventListener('change', async e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      fileName = f.name;
+      body.innerHTML = '<p class="small muted">Reading ' + esc(f.name) + '…</p>';
+      let table;
+      try { table = await fileToTable(f); } catch (err) { body.innerHTML = '<div class="warn small mt8">' + esc(err.message || 'Couldn\u2019t read that file.') + '</div>'; return; }
+      result = LG.importSeason(table, { name: nameFromFile(fileName), source: fileName });
+      if (!result.ok) { body.innerHTML = '<div class="warn small mt8">' + esc(result.error) + '</div>'; return; }
+      check = LG.verifySeason(result.league, result.recs);
+      const L = result.league;
+      body.innerHTML = '<label class="field">League name<input type="text" id="ilName" value="' + esc(L.name) + '"></label>' +
+        '<label class="field">Bowling center<select id="ilCenter"><option value="">—</option>' + BB.centerOptions('', true) + '</select></label>' +
+        '<div id="ilNewCenter" hidden class="new-center"><label class="field">Center name<input type="text" id="ilCName" placeholder="e.g. Lisle Lanes"></label></div>' +
+        summary() +
+        '<fieldset class="fs"><legend>Points (not in the file)</legend><div class="grid2">' +
+        '<label class="field">Per game won<input type="number" inputmode="decimal" id="ilPg" min="0" step="0.5" value="' + L.points.perGame + '"></label>' +
+        '<label class="field">For total pins<input type="number" inputmode="decimal" id="ilPs" min="0" step="0.5" value="' + L.points.perSeries + '"></label></div>' +
+        '<div class="small muted">Match your league\u2019s standings sheet; you can change it later in Settings.</div></fieldset>' +
+        '<button class="btn" id="ilGo">Create league</button>';
+      sh.querySelector('#ilCenter').addEventListener('change', ev => { sh.querySelector('#ilNewCenter').hidden = ev.target.value !== '__new'; });
+      sh.querySelector('#ilGo').addEventListener('click', () => {
+        const name = val('ilName').trim();
+        if (!name) { toast('Give the league a name'); return; }
+        let centerId = val('ilCenter');
+        if (centerId === '__new') {
+          const cn = val('ilCName').trim();
+          if (!cn) { toast('Name the bowling center'); return; }
+          centerId = Store.addCenter(cn, '').id;
+        }
+        Object.assign(L, { name, centerId, points: { perGame: Math.max(0, parseFloat(val('ilPg')) || 0), perSeries: Math.max(0, parseFloat(val('ilPs')) || 0) } });
+        Store.addLeague(L);
+        closeSheet();
+        toast('Imported ' + name + ' — ' + plural(result.report.weeks, 'week') + ', ' + plural(result.report.bowlers, 'bowler'), 3500);
+        show('league', { id: L.id, tab: 'standings', week: LG.lastScoredWeek(L) });
+      });
+    });
+  });
+}
+
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'league';
 
 /* ---------- matchup score entry ---------- */
@@ -342,7 +434,8 @@ function teamCardHTML(l, w, tid) {
       for (let gi = 0; gi < G; gi++) {
         const v = (line.games || [])[gi];
         const linked = line.links && line.links[gi];
-        h += '<input type="number" inputmode="numeric" min="0" max="300" placeholder="G' + (gi + 1) + '" aria-label="' + esc(s.name) + ' game ' + (gi + 1) + (linked ? ' (from their own log)' : '') + '"' +
+        const absG = line.absentGames && line.absentGames[gi];
+        h += '<input type="number" inputmode="numeric" min="0" max="300" placeholder="' + (absG ? 'abs ' + s.absentScore : 'G' + (gi + 1)) + '" aria-label="' + esc(s.name) + ' game ' + (gi + 1) + (absG ? ' (absent, scores ' + s.absentScore + ')' : '') + (linked ? ' (from their own log)' : '') + '"' + (absG ? ' data-abs="1"' : '') +
           (linked ? ' class="linked" title="From ' + esc(s.name) + '\u2019s own log. Typing here replaces it and unlinks it."' : '') + ' data-li="' + li + '" data-gi="' + gi + '" value="' + (v == null ? '' : v) + '">';
       }
       h += '<div class="ser" data-ser="' + tid + '-' + li + '">' + serText(s) + '</div></div>';
@@ -379,6 +472,7 @@ function bindTeam(l, w, tid, m, el, card) {
     inp.classList.toggle('bad', !ok);
     line.games = line.games || [];
     line.games[gi] = ok ? n : null;
+    if (n !== null && line.absentGames && line.absentGames[gi]) { line.absentGames[gi] = false; inp.removeAttribute('data-abs'); }
     if (LG.unlinkGame(line, gi)) {
       inp.classList.remove('linked');
       toast('Unlinked from ' + LG.bowlerName(l, line.bowlerId) + '\u2019s own log — this score now stands.', 3500);

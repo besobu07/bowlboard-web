@@ -9,6 +9,7 @@
  *   absent:   { pinsBelowAvg },                  absent bowler scores (avg - N) each game
  *   vacancy:  { score },                         empty lineup slot scores this, no handicap
  *   establishGames, defaultAvg,                  entering average used until N league games
+ *   newBowlerAvg: 'default' | 'firstNight'       a bowler with no average: default avg, or that night's own average
  *   teams:   [{id, name}],
  *   bowlers: [{id, name, email, enteringAvg, teamId ('' = sub), isMe, active}],
  *   schedule:[{week, date, matchups:[{a, b, lanes}], bye}],
@@ -38,7 +39,7 @@
       points: { perGame: 1, perSeries: 1 },
       absent: { pinsBelowAvg: 10 },
       vacancy: { score: 120 },
-      establishGames: 3, defaultAvg: 150,
+      establishGames: 3, defaultAvg: 150, newBowlerAvg: 'default',
       teams: [], bowlers: [], schedule: [], results: {}, ccEmails: '',
       createdAt: new Date().toISOString(),
     }, opts);
@@ -112,9 +113,12 @@
 
   function validScore(v) { return Number.isInteger(v) && v >= 0 && v <= 300; }
 
+  // A line can be absent for the whole night (absent) or for single games (absentGames[i]).
+  const gameAbsent = (l, i) => !!(l.absent || (l.absentGames && l.absentGames[i]));
+
   function weekHasScores(league, week) {
     const r = league.results && league.results[week];
-    return !!(r && r.lines && r.lines.some(l => l.absent || (l.games || []).some(validScore)));
+    return !!(r && r.lines && r.lines.some(l => l.absent || (l.absentGames || []).some(Boolean) || (l.games || []).some(validScore)));
   }
 
   // Last week with scores entered (0 if none); the "current" week is the one after, capped at season length.
@@ -129,7 +133,7 @@
       if (w >= beforeWeek) return;
       league.results[w].lines.forEach(l => {
         if (l.bowlerId !== bowlerId || l.absent) return;
-        (l.games || []).forEach(g => { if (validScore(g)) out.push({ week: w, score: g }); });
+        (l.games || []).forEach((g, i) => { if (validScore(g) && !gameAbsent(l, i)) out.push({ week: w, score: g }); });
       });
     });
     return out;
@@ -145,6 +149,13 @@
       return { avg: Math.floor(pins / n), games: n, pins, source: 'league' };
     }
     if (entering != null) return { avg: entering, games: n, pins, source: 'entering' };
+    // New bowler's first night: some leagues set that night's handicap from the scores bowled that night.
+    if (league.newBowlerAvg === 'firstNight' && n === 0) {
+      const r = league.results && league.results[week];
+      const l = r && r.lines.find(x => x.bowlerId === bowlerId && !x.absent);
+      const own = l ? (l.games || []).filter((g, i) => validScore(g) && !gameAbsent(l, i)) : [];
+      if (own.length) return { avg: Math.floor(own.reduce((a, g) => a + g, 0) / own.length), games: 0, pins: 0, source: 'firstNight' };
+    }
     return { avg: league.defaultAvg || 150, games: n, pins, source: 'default' };
   }
 
@@ -183,19 +194,15 @@
     }
     const a = averageBefore(league, line.bowlerId, week);
     const hcp = handicapFor(league, a.avg);
-    let games;
-    if (line.absent) {
-      const s = Math.max(0, a.avg - ((league.absent && league.absent.pinsBelowAvg) || 0));
-      games = new Array(G).fill(s);
-    } else {
-      games = Array.from({ length: G }, (_, i) => (validScore((line.games || [])[i]) ? line.games[i] : null));
-    }
+    const absScore = Math.max(0, a.avg - ((league.absent && league.absent.pinsBelowAvg) || 0));
+    const absentGames = Array.from({ length: G }, (_, i) => gameAbsent(line, i));
+    const games = Array.from({ length: G }, (_, i) => (absentGames[i] ? absScore : validScore((line.games || [])[i]) ? line.games[i] : null));
     const complete = games.every(g => g != null);
     const hcpGames = games.map(g => (g == null ? null : g + hcp));
     const sum = arr => arr.reduce((x, y) => x + (y || 0), 0);
     return {
       line, name: bowlerName(league, line.bowlerId), vacant: false, absent: !!line.absent,
-      avg: a.avg, avgSource: a.source, hcp, games, hcpGames,
+      avg: a.avg, avgSource: a.source, hcp, games, hcpGames, absentGames, absentScore: absScore,
       series: sum(games), hcpSeries: sum(hcpGames), complete, counted: !line.absent,
     };
   }
@@ -315,8 +322,8 @@
       T.lines.forEach(s => { if (!s.vacant && !s.absent && s.games.some(g => g != null)) bowled.push(Object.assign({ teamId: t.id, team: t.name }, s)); });
     });
     const games = [];
-    bowled.forEach(s => s.games.forEach((g, i) => { if (g != null) games.push({ name: s.name, team: s.team, bowlerId: s.line.bowlerId, score: g, hcpScore: g + s.hcp, game: i + 1 }); }));
-    const fullSeries = bowled.filter(s => s.complete).map(s => ({ name: s.name, team: s.team, bowlerId: s.line.bowlerId, score: s.series, hcpScore: s.hcpSeries, avg: s.avg, over: s.series - s.avg * league.gamesPerNight }));
+    bowled.forEach(s => s.games.forEach((g, i) => { if (g != null && !s.absentGames[i]) games.push({ name: s.name, team: s.team, bowlerId: s.line.bowlerId, score: g, hcpScore: g + s.hcp, game: i + 1 }); }));
+    const fullSeries = bowled.filter(s => s.complete && !s.absentGames.some(Boolean)).map(s => ({ name: s.name, team: s.team, bowlerId: s.line.bowlerId, score: s.series, hcpScore: s.hcpSeries, avg: s.avg, over: s.series - s.avg * league.gamesPerNight }));
     const top = (arr, key, n) => arr.slice().sort((a, b) => b[key] - a[key] || a.name.localeCompare(b.name)).slice(0, n);
 
     const milestones = [];
@@ -584,7 +591,8 @@
     if (rows.length < 2) return { ok: false, error: 'Need a header row and at least one score row.' };
     const head = rows[0].map(h => h.toLowerCase().trim());
     const col = re => head.findIndex(h => re.test(h));
-    const iWeek = col(/^(week|wk)\b/), iTeam = col(/^team/), iName = col(/^(bowler|name|player)/), iStatus = col(/^status/);
+    const iWeek = col(/^(week|wk)\b/), iName = col(/^(bowler|name|player)/), iStatus = col(/^(status|note)/);
+    let iTeam = col(/^team( name)?$/); if (iTeam < 0) iTeam = col(/^team(?!\s*(#|no|num))/);
     const gameCols = head.map((h, i) => [h, i]).filter(([h]) => /^(game|gm|g)\s*\d+$/.test(h.replace(/\s+/g, ' ')))
       .map(([h, i]) => [parseInt(h.replace(/\D/g, ''), 10), i]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
     if (iWeek < 0 || iTeam < 0 || iName < 0) return { ok: false, error: 'Need Week, Team and Bowler columns.' };
@@ -620,7 +628,11 @@
       });
       if (games.some(g => Number.isNaN(g))) { errors.push('Row ' + line + ': scores must be 0–300'); return; }
       while (games.length < league.gamesPerNight) games.push(null);
-      (weeks[w] = weeks[w] || []).push({ teamId: team.id, bowlerId, absent: status === 'absent', games });
+      const absentGames = Array.from({ length: league.gamesPerNight }, (_, i) => new RegExp('\\bg' + (i + 1) + '\\s*absent').test(status));
+      const allAbsent = status === 'absent' || absentGames.every(Boolean);
+      const lineOut = { teamId: team.id, bowlerId, absent: allAbsent, games: allAbsent ? games.map(() => null) : games.map((g, i) => (absentGames[i] ? null : g)) };
+      if (!allAbsent && absentGames.some(Boolean)) lineOut.absentGames = absentGames;
+      (weeks[w] = weeks[w] || []).push(lineOut);
       teamsSeen.add(w + ':' + team.id);
     });
     const count = Object.values(weeks).reduce((a, l) => a + l.length, 0);
@@ -648,6 +660,245 @@
     return { weeks: parsed.weekList.length, lines: parsed.count, added: Object.keys(parsed.pending).length };
   }
 
+  /* ---------- importing a whole season (LeagueSecretary / BLS "weekly scores" export) ----------
+   * Input: a table (array of rows, first row = headers) with, in any order:
+   *   Week, Date, Team, Bowler, G1..Gn   (required)
+   *   Team #, Avg, Hdcp, Lane, Note/Status, +/- Avg   (used when present)
+   * The league's rules are worked out from the data and then checked row by row:
+   *   handicap basis / percent / rounding (from Avg -> Hdcp), absent penalty (Avg - absent score),
+   *   how many games an entering average is kept, whether new bowlers get a first-night average,
+   *   matchups from lane pairs (odd lane vs the next even lane).
+   */
+  function parseDateCell(v) {
+    if (v == null || v === '') return '';
+    if (typeof v === 'number') return new Date(Math.round((v - 25569) * 864e5)).toISOString().slice(0, 10);
+    const s = String(v).trim();
+    let m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) { const y = m[3].length === 2 ? '20' + m[3] : m[3]; return y + '-' + m[1].padStart(2, '0') + '-' + m[2].padStart(2, '0'); }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    return m ? m[0] : '';
+  }
+
+  function seasonRecords(table) {
+    if (!Array.isArray(table) || table.length < 2) return { ok: false, error: 'The file has no rows.' };
+    const head = table[0].map(h => String(h == null ? '' : h).trim().toLowerCase());
+    const col = re => head.findIndex(h => re.test(h));
+    const c = {
+      week: col(/^(week|wk)$/), date: col(/^date$/), teamNo: col(/^team\s*(#|no|num)/), team: col(/^team( name)?$/),
+      bowler: col(/^(bowler|name|player)( name)?$/), avg: col(/^(avg|average)$/), hdcp: col(/^(hdcp|hcp|handicap)$/),
+      lane: col(/^lane$/), note: col(/^(note|notes|status)$/), pm: col(/^\+\/-/),
+    };
+    const gameCols = head.map((h, i) => [h, i]).filter(([h]) => /^(g|gm|game)\s*\d+$/.test(h))
+      .map(([h, i]) => [parseInt(h.replace(/\D/g, ''), 10), i]).sort((a, b) => a[0] - b[0]).map(x => x[1]);
+    const missing = ['week', 'team', 'bowler'].filter(k => c[k] < 0);
+    if (missing.length || !gameCols.length) return { ok: false, error: 'This doesn’t look like a weekly scores export. It needs Week, Team, Bowler and G1, G2… columns.' };
+    const num = v => (v === '' || v == null ? null : Number(v));
+    const recs = [], skipped = [];
+    table.slice(1).forEach((r, k) => {
+      if (!r || r.every(v => v == null || v === '')) return;
+      const week = parseInt(r[c.week], 10);
+      const team = String(r[c.team] == null ? '' : r[c.team]).trim(), name = String(r[c.bowler] == null ? '' : r[c.bowler]).trim();
+      if (!Number.isInteger(week) || week < 1 || !team || !name) { skipped.push(k + 2); return; }
+      const note = c.note >= 0 ? String(r[c.note] || '').toLowerCase() : '';
+      const games = gameCols.map(i => num(r[i]));
+      const absentGames = games.map((_, i) => /\babsent\b/.test(note) && (new RegExp('\\bg' + (i + 1) + '\\s*absent').test(note) || !/\bg\d/.test(note)));
+      recs.push({
+        row: k + 2, week, date: c.date >= 0 ? parseDateCell(r[c.date]) : '', teamNo: c.teamNo >= 0 ? num(r[c.teamNo]) : null, team, name,
+        avg: c.avg >= 0 ? num(r[c.avg]) : null, hdcp: c.hdcp >= 0 ? num(r[c.hdcp]) : null, lane: c.lane >= 0 ? num(r[c.lane]) : null,
+        pm: c.pm >= 0 ? num(r[c.pm]) : null, games, absentGames, vacant: /^vacan/i.test(name),
+      });
+    });
+    if (!recs.length) return { ok: false, error: 'No score rows found.' };
+    return { ok: true, recs, skipped, gamesPerNight: gameCols.length, has: { avg: c.avg >= 0, hdcp: c.hdcp >= 0, lane: c.lane >= 0, date: c.date >= 0 } };
+  }
+
+  function mode(arr) {
+    const m = new Map(); let best = null, bc = 0;
+    arr.forEach(v => { const n = (m.get(v) || 0) + 1; m.set(v, n); if (n > bc) { bc = n; best = v; } });
+    return best;
+  }
+
+  // Replays each bowler's season under a candidate rule and counts how many Avg cells it reproduces.
+  function simulateAverages(recs, keepGames, firstNight) {
+    const by = new Map();
+    recs.filter(r => !r.vacant && r.avg != null).sort((a, b) => a.week - b.week).forEach(r => { if (!by.has(r.name)) by.set(r.name, []); by.get(r.name).push(r); });
+    let ok = 0, tot = 0;
+    const newBowlers = new Set();
+    by.forEach((rs, name) => {
+      const first = rs[0];
+      const own = first.games.filter((g, i) => g != null && !first.absentGames[i]);
+      const isNew = firstNight && own.length && !first.absentGames.some(Boolean) && first.avg === Math.floor(own.reduce((a, g) => a + g, 0) / own.length) && (first.pm == null || first.pm === 0);
+      if (isNew) newBowlers.add(name);
+      const entering = isNew ? null : first.avg;
+      let pins = 0, n = 0;
+      rs.forEach(r => {
+        const exp = n === 0 ? (isNew ? first.avg : entering) : (entering != null && n < keepGames ? entering : Math.floor(pins / n));
+        tot++; if (exp === r.avg) ok++;
+        r.games.forEach((g, i) => { if (g != null && !r.absentGames[i]) { pins += g; n++; } });
+      });
+    });
+    return { ok, tot, newBowlers };
+  }
+
+  function importSeason(table, opts) {
+    opts = opts || {};
+    const P = seasonRecords(table);
+    if (!P.ok) return P;
+    const recs = P.recs, G = P.gamesPerNight, warnings = [];
+    if (P.skipped.length) warnings.push(P.skipped.length + ' row' + (P.skipped.length === 1 ? '' : 's') + ' without a week, team or bowler were skipped.');
+    const makeId = opts.makeId || uid;
+
+    // teams, in team-number order when the file has one
+    const teamOrder = new Map();
+    recs.forEach(r => { if (!teamOrder.has(r.team)) teamOrder.set(r.team, r.teamNo == null ? 1e9 + teamOrder.size : r.teamNo); });
+    const teams = Array.from(teamOrder.entries()).sort((a, b) => a[1] - b[1]).map(([name]) => ({ id: makeId(), name }));
+    const teamId = name => teams.find(t => t.name === name).id;
+
+    const weeks = Array.from(new Set(recs.map(r => r.week))).sort((a, b) => a - b);
+    const lastWeek = weeks[weeks.length - 1];
+    const perTeamWeek = new Map();
+    recs.forEach(r => { const k = r.week + '|' + r.team; perTeamWeek.set(k, (perTeamWeek.get(k) || 0) + 1); });
+    const teamSize = Math.max(...perTeamWeek.values());
+    const dates = {};
+    recs.forEach(r => { if (r.date && !dates[r.week]) dates[r.week] = r.date; });
+    const startDate = dates[weeks[0]] ? addDays(dates[weeks[0]], -7 * (weeks[0] - 1)) : '';
+
+    // handicap: find basis / percent / rounding that reproduce the Hdcp column
+    let handicap = { enabled: true, basis: 220, pct: 90, rounding: 'floor' }, hMatch = null;
+    const hr = recs.filter(r => r.avg != null && r.hdcp != null && !r.vacant);
+    if (hr.length) {
+      if (hr.every(r => r.hdcp === 0)) { handicap.enabled = false; hMatch = { ok: hr.length, tot: hr.length }; }
+      else {
+        let best = null;
+        for (let basis = 150; basis <= 250; basis += 5) for (let pct = 50; pct <= 100; pct += 5) for (const rounding of ['floor', 'round', 'even']) {
+          const h = { handicap: { enabled: true, basis, pct, rounding } };
+          let ok = 0;
+          for (const r of hr) if (handicapFor(h, r.avg) === r.hdcp) ok++;
+          if (!best || ok > best.ok) best = { ok, basis, pct, rounding };
+          if (ok === hr.length) break;
+        }
+        handicap = { enabled: true, basis: best.basis, pct: best.pct, rounding: best.rounding };
+        hMatch = { ok: best.ok, tot: hr.length };
+        if (best.ok < hr.length) warnings.push('Handicap matched ' + best.ok + ' of ' + hr.length + ' rows with ' + best.pct + '% of ' + best.basis + '. Check it in Settings.');
+      }
+    } else warnings.push('No handicap column, so handicap is set to 90% of 220. Check it in Settings.');
+
+    // absent penalty: average minus the score an absent bowler got
+    const absDiffs = [];
+    recs.forEach(r => r.absentGames.forEach((a, i) => { if (a && r.avg != null && r.games[i] != null) absDiffs.push(r.avg - r.games[i]); }));
+    const pinsBelowAvg = absDiffs.length ? Math.max(0, mode(absDiffs)) : 10;
+
+    // how long an entering average is kept, and the first-night rule for new bowlers
+    let keep = { n: 9, ok: 0, tot: 0 }, firstNight = false, newBowlers = new Set();
+    if (P.has.avg) {
+      let best = null;
+      for (const fn of [true, false]) for (const n of [1, 3, 6, 9, 12, 15, 18, 21, 24, 27, 30]) {
+        const sim = simulateAverages(recs, n, fn);
+        if (!best || sim.ok > best.ok) best = Object.assign({ n, fn }, sim);
+      }
+      keep = { n: best.n, ok: best.ok, tot: best.tot };
+      firstNight = best.fn && best.newBowlers.size > 0;
+      newBowlers = best.newBowlers;
+      if (best.ok < best.tot) warnings.push('Averages matched ' + best.ok + ' of ' + best.tot + ' rows. Differences usually mean a bowler’s average was set by hand in the other program.');
+    } else warnings.push('No Avg column, so entering averages are blank.');
+
+    // bowlers: rosters = each team's lineup in the last week; everyone else is a sub
+    const firstRec = new Map(), lastTeam = new Map();
+    recs.slice().sort((a, b) => a.week - b.week).forEach(r => { if (r.vacant) return; if (!firstRec.has(r.name)) firstRec.set(r.name, r); });
+    recs.filter(r => r.week === lastWeek && !r.vacant).forEach(r => lastTeam.set(r.name, r.team));
+    const bowlers = Array.from(firstRec.entries()).map(([name, r]) => ({
+      id: makeId(), name, email: '', enteringAvg: newBowlers.has(name) || r.avg == null ? null : r.avg,
+      teamId: lastTeam.has(name) ? teamId(lastTeam.get(name)) : '', isMe: false, active: true,
+    }));
+    const bowlerId = name => (bowlers.find(b => b.name === name) || {}).id;
+
+    // vacancy score, if the file has vacant rows
+    const vacScores = [];
+    recs.filter(r => r.vacant).forEach(r => r.games.forEach(g => { if (g != null) vacScores.push(g); }));
+
+    // results
+    const results = {};
+    weeks.forEach(w => {
+      results[w] = { lines: recs.filter(r => r.week === w).map(r => {
+        const all = r.absentGames.every(Boolean);
+        const line = { teamId: teamId(r.team), bowlerId: r.vacant ? VACANT : bowlerId(r.name), absent: all && !r.vacant, games: r.games.map((g, i) => (r.absentGames[i] || r.vacant ? null : g)), links: [] };
+        if (!all && r.absentGames.some(Boolean)) line.absentGames = r.absentGames.slice();
+        return line;
+      }), final: true, updatedAt: new Date().toISOString() };
+    });
+
+    // schedule: odd lane vs the next even lane
+    const schedule = [];
+    let laneWeeks = 0;
+    const baseLeague = createLeague({ seasonWeeks: lastWeek, teams });
+    const fallback = generateSchedule(Object.assign({}, baseLeague, { startDate }));
+    for (let w = 1; w <= lastWeek; w++) {
+      const tl = new Map();
+      recs.filter(r => r.week === w && r.lane != null).forEach(r => tl.set(r.team, r.lane));
+      const byLane = new Map(Array.from(tl.entries()).map(([t, l]) => [l, t]));
+      const matchups = [], used = new Set();
+      Array.from(byLane.keys()).sort((a, b) => a - b).forEach(l => {
+        if (used.has(l)) return;
+        const mate = l % 2 ? l + 1 : l - 1;
+        if (byLane.has(mate) && !used.has(mate)) {
+          const lo = Math.min(l, mate), hi = Math.max(l, mate);
+          matchups.push({ a: teamId(byLane.get(lo)), b: teamId(byLane.get(hi)), lanes: lo + '-' + hi });
+          used.add(lo); used.add(hi);
+        }
+      });
+      const inWeek = new Set(matchups.flatMap(m => [m.a, m.b]));
+      const bye = teams.length % 2 ? (teams.find(t => !inWeek.has(t.id)) || {}).id || null : null;
+      if (matchups.length && matchups.length === Math.floor(teams.length / 2)) {
+        laneWeeks++;
+        schedule.push({ week: w, date: dates[w] || (startDate ? addDays(startDate, 7 * (w - 1)) : ''), matchups, bye });
+      } else {
+        const f = fallback[w - 1];
+        schedule.push({ week: w, date: dates[w] || f.date, matchups: f.matchups, bye: f.bye });
+      }
+    }
+    if (laneWeeks < weeks.length) warnings.push('Matchups for ' + (weeks.length - laneWeeks) + ' week' + (weeks.length - laneWeeks === 1 ? '' : 's') + ' couldn’t be read from lanes, so a round robin was used for those. Check the Schedule tab.');
+
+    const league = createLeague({
+      name: opts.name || 'Imported league', centerId: opts.centerId || '',
+      day: startDate ? DAYS[new Date(startDate + 'T12:00:00').getDay()] : 'Monday', time: opts.time || '', startDate,
+      seasonWeeks: Math.max(lastWeek, opts.seasonWeeks || 0), gamesPerNight: G, teamSize, handicap,
+      absent: { pinsBelowAvg }, vacancy: { score: vacScores.length ? mode(vacScores) : 120 },
+      establishGames: keep.n, newBowlerAvg: firstNight ? 'firstNight' : 'default',
+      teams, bowlers, schedule, results, askedMe: false,
+      imported: { from: opts.source || 'file', at: new Date().toISOString(), rows: recs.length },
+    });
+    league.day = startDate ? DAYS[new Date(startDate + 'T12:00:00').getDay()] : league.day;
+    return {
+      ok: true, league, recs,
+      report: {
+        rows: recs.length, weeks: weeks.length, firstDate: dates[weeks[0]] || '', lastDate: dates[lastWeek] || '',
+        teams: teams.length, bowlers: bowlers.length, rostered: bowlers.filter(b => b.teamId).length, subs: bowlers.filter(b => !b.teamId).length,
+        teamSize, gamesPerNight: G, handicap, handicapMatch: hMatch, pinsBelowAvg, keepGames: keep.n, avgMatch: P.has.avg ? { ok: keep.ok, tot: keep.tot } : null,
+        firstNight, newBowlers: newBowlers.size, laneWeeks, warnings,
+      },
+    };
+  }
+
+  // Recompute every imported line and compare with the file's Avg and Hdcp columns.
+  function verifySeason(league, recs) {
+    let checked = 0, avgOk = 0, hcpOk = 0;
+    const mismatches = [];
+    recs.forEach(r => {
+      if (r.vacant || r.avg == null) return;
+      const w = league.results[r.week];
+      const b = league.bowlers.find(x => x.name === r.name);
+      const line = w && b && w.lines.find(l => l.bowlerId === b.id && l.teamId === (league.teams.find(t => t.name === r.team) || {}).id);
+      if (!line) return;
+      const s = scoreLine(league, r.week, line);
+      checked++;
+      const aOk = s.avg === r.avg, hOk = r.hdcp == null || s.hcp === r.hdcp;
+      if (aOk) avgOk++;
+      if (hOk) hcpOk++;
+      if ((!aOk || !hOk) && mismatches.length < 10) mismatches.push({ row: r.row, week: r.week, bowler: r.name, fileAvg: r.avg, ourAvg: s.avg, fileHdcp: r.hdcp, ourHdcp: s.hcp });
+    });
+    return { checked, avgOk, hcpOk, mismatches };
+  }
+
   function standingsCSV(league, week) {
     const rows = [['Place', 'Team', 'Points won', 'Points lost', 'Scratch pins', 'Handicap pins', 'High game (hcp)', 'High series (hcp)']];
     standings(league, week).forEach(s => rows.push([s.place, s.name, s.won, s.lost, s.scratch, s.hcpPins, s.highGame, s.highSeries]));
@@ -662,7 +913,7 @@
     const rows = [head];
     league.teams.forEach(t => {
       teamWeek(league, week, t.id).lines.forEach(s => {
-        rows.push([week, weekDate(league, week), t.name, s.name, s.vacant ? 'vacant' : s.absent ? 'absent' : 'bowled', s.avg == null ? '' : s.avg, s.hcp]
+        rows.push([week, weekDate(league, week), t.name, s.name, s.vacant ? 'vacant' : s.absent ? 'absent' : s.absentGames.some(Boolean) ? s.absentGames.map((x, i) => (x ? 'G' + (i + 1) + ' absent' : '')).filter(Boolean).join(' ') : 'bowled', s.avg == null ? '' : s.avg, s.hcp]
           .concat(s.games.map(g => (g == null ? '' : g))).concat([s.series, s.hcpSeries]));
       });
     });
@@ -774,7 +1025,7 @@
       league.results[w].lines.forEach(l => {
         if (l.bowlerId !== b.id || l.absent) return;
         (l.games || []).forEach((g, i) => {
-          if (!validScore(g) || (l.links && l.links[i])) return;
+          if (!validScore(g) || gameAbsent(l, i) || (l.links && l.links[i])) return;
           out.push({ id: 'sheet:' + league.id + ':' + w + ':' + i, seriesId: 'sheet:' + league.id + ':' + w, gameNo: i + 1, date: weekDate(league, w),
             centerId: league.centerId, leagueId: league.id, week: w, mode: 'sheet', total: g, sheet: true, createdAt: '' });
         });
@@ -839,7 +1090,7 @@
     matchupResult, pointsPerNight, pointsLine, byeNote, ROUNDING_LABEL, standings,
     me, weekForDate, myLineSlot, pushMyGames, syncLinks, unlinkGame, findLink, sheetOnlyGames, bowlerStats, weekHighlights,
     recapData, recapText, recapHTML, recapSubject, recipients, fmtDate, fmtPts,
-    parseCSV, toCSV, rosterFromCSV, applyRoster, scoresFromCSV, applyScores, standingsCSV, weekScoresCSV, averagesCSV,
+    parseCSV, toCSV, rosterFromCSV, applyRoster, scoresFromCSV, applyScores, seasonRecords, importSeason, verifySeason, parseDateCell, standingsCSV, weekScoresCSV, averagesCSV,
   };
 
   if (typeof module !== 'undefined' && module.exports) module.exports = League;
