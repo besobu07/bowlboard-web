@@ -12,6 +12,8 @@
   const u16 = (b, o) => b[o] | (b[o + 1] << 8);
   const u32 = (b, o) => (b[o] | (b[o + 1] << 8) | (b[o + 2] << 16) | (b[o + 3] << 24)) >>> 0;
   const utf8 = bytes => new TextDecoder('utf-8').decode(bytes);
+  // Errors meant for the person importing: plain sentences. Anything else becomes "damaged".
+  const fail = msg => Object.assign(new Error(msg), { friendly: true });
 
   async function inflateRaw(bytes) {
     const ds = new DecompressionStream('deflate-raw');
@@ -26,12 +28,12 @@
     for (let i = b.length - 22; i >= Math.max(0, b.length - 65557); i--) {
       if (u32(b, i) === 0x06054b50) { eocd = i; break; }
     }
-    if (eocd < 0) throw new Error('This isn’t an Excel (.xlsx) file.');
+    if (eocd < 0) throw fail('This isn’t an Excel (.xlsx) file.');
     const count = u16(b, eocd + 10);
     let p = u32(b, eocd + 16);
     const files = {};
     for (let n = 0; n < count; n++) {
-      if (u32(b, p) !== 0x02014b50) throw new Error('The spreadsheet file looks damaged.');
+      if (u32(b, p) !== 0x02014b50) throw fail('The spreadsheet file looks damaged. Try exporting it again.');
       const method = u16(b, p + 10), csize = u32(b, p + 20), nlen = u16(b, p + 28), xlen = u16(b, p + 30), clen = u16(b, p + 32);
       const local = u32(b, p + 42);
       const name = utf8(b.subarray(p + 46, p + 46 + nlen));
@@ -40,7 +42,7 @@
         const data = b.subarray(start, start + csize);
         if (method === 0) return Promise.resolve(data);
         if (method === 8) return inflateRaw(data);
-        return Promise.reject(new Error('Unsupported compression in the spreadsheet.'));
+        return Promise.reject(fail('This spreadsheet uses compression BowlBoard can’t read. Save it again from Excel, or as CSV.'));
       };
       p += 46 + nlen + xlen + clen;
     }
@@ -82,11 +84,16 @@
     return rows;
   }
 
-  async function read(buf) {
+  function read(buf) {
+    return readFile(buf).catch(e => {
+      throw e && e.friendly ? e : fail('The spreadsheet file looks damaged. Try exporting it again.');
+    });
+  }
+  async function readFile(buf) {
     const files = unzip(buf);
     const get = async name => (files[name] ? utf8(await files[name]()) : null);
     const wbXml = await get('xl/workbook.xml');
-    if (!wbXml) throw new Error('This isn’t an Excel (.xlsx) file.');
+    if (!wbXml) throw fail('This isn’t an Excel (.xlsx) file.');
     const sharedXml = await get('xl/sharedStrings.xml');
     const shared = [];
     if (sharedXml) sharedXml.replace(/<si>([\s\S]*?)<\/si>/g, (_, si) => { shared.push(textOf(si)); return ''; });

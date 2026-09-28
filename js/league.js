@@ -95,6 +95,43 @@
     return out;
   }
 
+  // Give undated weeks a date one week after the week before them, so holiday gaps
+  // in weeks already dated (or bowled) are kept.
+  function chainDates(league) {
+    let prev = null;
+    league.schedule.sort((a, b) => a.week - b.week).forEach(s => {
+      if (!s.date) s.date = prev ? addDays(prev, 7) : (league.startDate || '');
+      prev = s.date || prev;
+    });
+  }
+  // Rebuild matchups for weeks that haven't been bowled. Bowled weeks keep theirs; every
+  // week keeps its date unless opts.redate (the first week's date changed).
+  function rebuildSchedule(league, opts) {
+    opts = opts || {};
+    const old = new Map((league.schedule || []).map(s => [s.week, s]));
+    const fresh = generateSchedule(league);
+    league.schedule = fresh.map(w => {
+      const o = old.get(w.week);
+      if (o && weekHasScores(league, w.week)) return o;
+      return Object.assign(w, { date: opts.redate || !o ? '' : (o.date || '') });
+    });
+    chainDates(league);
+  }
+  // Season length: never shorter than the last week bowled; new weeks are scheduled.
+  function setSeasonLength(league, weeks) {
+    league.seasonWeeks = Math.max(1, weeks, lastScoredWeek(league));
+    rebuildSchedule(league);
+  }
+  // The most games any bowler has entered in one night (games per night can't go below it).
+  function mostGamesEntered(league) {
+    let most = 0;
+    Object.values(league.results || {}).forEach(r => (r.lines || []).forEach(l => {
+      (l.games || []).forEach((g, i) => { if (g != null) most = Math.max(most, i + 1); });
+      (l.absentGames || []).forEach((a, i) => { if (a) most = Math.max(most, i + 1); });
+    }));
+    return most;
+  }
+
   function weekSchedule(league, week) {
     return league.schedule.find(s => s.week === week) || { week, matchups: [], bye: null };
   }
@@ -1036,6 +1073,130 @@
     return out;
   }
 
+  /* ---------- the bowler's view: which night to show, and my matchup in it ---------- */
+  // Tonight if a week falls on today; else the next week not yet bowled; else the last one bowled.
+  function featuredWeek(league, today) {
+    const n = league.seasonWeeks || 0;
+    let next = null;
+    for (let w = 1; w <= n; w++) {
+      const d = weekDate(league, w);
+      if (d && d === today) return { week: w, date: d, when: 'tonight' };
+      if (d && d > today && !weekHasScores(league, w) && !next) next = { week: w, date: d, when: 'next' };
+    }
+    if (next) return next;
+    const last = lastScoredWeek(league);
+    if (last) return { week: last, date: weekDate(league, last), when: 'last' };
+    return n ? { week: 1, date: weekDate(league, 1), when: 'next' } : null;
+  }
+  function myMatchup(league, week) {
+    const b = me(league);
+    if (!b) return null;
+    const r = league.results && league.results[week];
+    const line = r && r.lines.find(l => l.bowlerId === b.id);
+    const teamId = line ? line.teamId : b.teamId;
+    if (!teamId) return { bowler: b, teamId: '', sub: true };
+    const sch = weekSchedule(league, week);
+    const mi = sch.matchups.findIndex(m => m.a === teamId || m.b === teamId);
+    if (mi < 0) return { bowler: b, teamId, bye: sch.bye === teamId };
+    const m = sch.matchups[mi];
+    const side = m.a === teamId ? 'a' : 'b';
+    const res = matchupResult(league, week, m);
+    const entered = res.A.entered || res.B.entered;
+    return {
+      bowler: b, teamId, mi, m, lanes: m.lanes, opponentId: side === 'a' ? m.b : m.a,
+      entered, decided: res.decided,
+      myPts: side === 'a' ? res.ptsA : res.ptsB, theirPts: side === 'a' ? res.ptsB : res.ptsA,
+      myGames: line ? (line.games || []).slice() : [], linked: !!(line && (line.links || []).some(Boolean)),
+    };
+  }
+  // Is this league already here? Same name (ignoring case/spaces) or imported from the same file.
+  function findDuplicate(leagues, league) {
+    const norm = x => String(x || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return (leagues || []).find(l => l !== league && l.id !== league.id && (norm(l.name) === norm(league.name) ||
+      (l.imported && league.imported && l.imported.from && l.imported.from === league.imported.from))) || null;
+  }
+
+  // Re-importing a league: bring over what the file doesn't have — who "you" are,
+  // roster emails, the recap list, and links from your own logged games.
+  function carryOver(from, to) {
+    const key = n => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const byName = {};
+    to.bowlers.forEach(b => { byName[key(b.name)] = b; });
+    const idMap = {};
+    let emails = 0, links = 0, me = false;
+    from.bowlers.forEach(b => {
+      const t = byName[key(b.name)];
+      if (!t) return;
+      idMap[b.id] = t.id;
+      if (b.email && !t.email) { t.email = b.email; emails++; }
+      if (b.isMe) { to.bowlers.forEach(x => { x.isMe = x === t; }); me = true; }
+    });
+    if (me || from.askedMe) to.askedMe = true;
+    if (from.ccEmails && !to.ccEmails) to.ccEmails = from.ccEmails;
+    Object.keys(from.results || {}).forEach(w => {
+      const nr = to.results && to.results[w];
+      if (!nr) return;
+      from.results[w].lines.forEach(ol => {
+        if (!(ol.links || []).some(Boolean) || !idMap[ol.bowlerId]) return;
+        const nl = nr.lines.find(x => x.bowlerId === idMap[ol.bowlerId]);
+        if (!nl) return;
+        nl.links = nl.links || [];
+        ol.links.forEach((id, i) => { if (id && nl.games && nl.games[i] === ol.games[i]) { nl.links[i] = id; links++; } });
+      });
+    });
+    return { me, emails, links };
+  }
+
+  // Update a league from a newer (or older) export of the same league. Weeks in the file
+  // replace those weeks here — keeping links to your own logged games where the score
+  // didn't change — and add any new teams and bowlers. Everything else stays: weeks that
+  // aren't in the file, the season length, dates of later weeks, rules and points,
+  // roster emails, who you are.
+  function mergeImport(dst, src) {
+    const key = n => String(n || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    const out = { weeks: 0, links: 0, teams: 0, bowlers: 0 };
+    const teamMap = {};
+    src.teams.forEach(t => {
+      let d = dst.teams.find(x => key(x.name) === key(t.name));
+      if (!d) { d = { id: uid(), name: t.name }; dst.teams.push(d); out.teams++; }
+      teamMap[t.id] = d.id;
+    });
+    const bMap = {};
+    src.bowlers.forEach(b => {
+      let d = dst.bowlers.find(x => key(x.name) === key(b.name));
+      if (!d) {
+        d = { id: uid(), name: b.name, email: b.email || '', enteringAvg: b.enteringAvg == null ? null : b.enteringAvg, teamId: teamMap[b.teamId] || '', isMe: false, active: b.active !== false };
+        dst.bowlers.push(d); out.bowlers++;
+      } else if (d.enteringAvg == null && b.enteringAvg != null) d.enteringAvg = b.enteringAvg;
+      bMap[b.id] = d.id;
+    });
+    const mapB = id => (id === VACANT ? VACANT : bMap[id] || id);
+    Object.keys(src.results || {}).forEach(w => {
+      const old = dst.results[w];
+      const lines = src.results[w].lines.map(l => Object.assign({}, l, { teamId: teamMap[l.teamId] || l.teamId, bowlerId: mapB(l.bowlerId), links: [] }));
+      if (old) lines.forEach(nl => {
+        const ol = old.lines.find(x => x.bowlerId === nl.bowlerId);
+        if (!ol || !(ol.links || []).some(Boolean)) return;
+        nl.links = (nl.games || []).map((g, i) => (ol.links[i] && ol.games && ol.games[i] === g ? ol.links[i] : null));
+        out.links += nl.links.filter(Boolean).length;
+      });
+      dst.results[w] = Object.assign({}, src.results[w], { lines });
+      out.weeks++;
+      const ss = (src.schedule || []).find(s => s.week === +w);
+      if (ss) {
+        const entry = { week: +w, date: ss.date, matchups: ss.matchups.map(m => ({ a: teamMap[m.a] || m.a, b: teamMap[m.b] || m.b, lanes: m.lanes })), bye: ss.bye ? teamMap[ss.bye] || ss.bye : null };
+        const i = dst.schedule.findIndex(s => s.week === +w);
+        if (i >= 0) dst.schedule[i] = entry; else dst.schedule.push(entry);
+      }
+    });
+    if (src.seasonWeeks > dst.seasonWeeks) dst.seasonWeeks = src.seasonWeeks;
+    const have = new Set(dst.schedule.map(s => s.week));
+    if (Array.from({ length: dst.seasonWeeks }, (_, i) => i + 1).some(w => !have.has(w))) rebuildSchedule(dst);
+    else chainDates(dst);
+    dst.imported = Object.assign({}, dst.imported || {}, { from: (src.imported || {}).from || (dst.imported || {}).from, at: new Date().toISOString(), rows: (src.imported || {}).rows });
+    return out;
+  }
+
   /* ---------- demo data (fictional) ---------- */
   function buildDemoLeague(opts) {
     opts = opts || {};
@@ -1090,7 +1251,7 @@
     teamName, bowler, bowlerName, roster, subs, weekNumbers, weekHasScores, lastScoredWeek, currentWeek,
     validScore, gamesBefore, averageBefore, handicapFor, defaultLines, teamLines, scoreLine, teamWeek,
     matchupResult, pointsPerNight, pointsLine, byeNote, ROUNDING_LABEL, standings,
-    me, weekForDate, myLineSlot, pushMyGames, syncLinks, unlinkGame, findLink, sheetOnlyGames, bowlerStats, weekHighlights,
+    me, weekForDate, myLineSlot, featuredWeek, myMatchup, findDuplicate, carryOver, mergeImport, chainDates, rebuildSchedule, setSeasonLength, mostGamesEntered, pushMyGames, syncLinks, unlinkGame, findLink, sheetOnlyGames, bowlerStats, weekHighlights,
     recapData, recapText, recapHTML, recapSubject, recipients, fmtDate, fmtPts, fmtN,
     parseCSV, toCSV, rosterFromCSV, applyRoster, scoresFromCSV, applyScores, seasonRecords, importSeason, verifySeason, parseDateCell, standingsCSV, weekScoresCSV, averagesCSV,
   };

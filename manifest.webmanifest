@@ -1,7 +1,7 @@
 {
   "name": "BowlBoard",
   "short_name": "BowlBoard",
-  "description": "Track your bowling games and run your league: scores, stats, standings and weekly recaps.",
+  "description": "Your bowling season, in one place: scores, stats, standings and weekly league recaps.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

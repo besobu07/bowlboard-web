@@ -4,7 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#060a14">
-<title>BowlBoard — prototype</title>
+<title>BowlBoard</title>
+<meta name="description" content="Your bowling season, in one place: scores, stats, standings and weekly league recaps.">
 <link rel="icon" type="image/png" href="favicon.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="manifest" href="manifest.webmanifest">
@@ -19,7 +20,6 @@
 <div class="app">
   <header class="app-header">
     <div class="brand"><img class="app-logo" src="logo-icon.jpg" alt=""><div class="logo">BowlBoard</div></div>
-    <div class="proto-tag">prototype</div>
   </header>
 
   <main class="screens">
@@ -29,6 +29,7 @@
     <section id="screen-photo" class="screen"></section>
     <section id="screen-saved" class="screen"></section>
     <section id="screen-game" class="screen"></section>
+    <section id="screen-ball" class="screen"></section>
     <section id="screen-history" class="screen"></section>
     <section id="screen-stats" class="screen"></section>
     <section id="screen-league" class="screen"></section>
@@ -40,11 +41,11 @@
   </main>
 
   <nav class="tabbar" aria-label="Main">
-    <button data-nav="home" class="active">🏠<span>Home</span></button>
-    <button data-nav="history">🗂️<span>History</span></button>
-    <button data-nav="stats">📊<span>Stats</span></button>
-    <button data-nav="league">🏆<span>League</span></button>
-    <button data-nav="more">⋯<span>More</span></button>
+    <button data-nav="home" class="active"><span>Home</span></button>
+    <button data-nav="history"><span>History</span></button>
+    <button data-nav="stats"><span>Stats</span></button>
+    <button data-nav="league"><span>League</span></button>
+    <button data-nav="more"><span>More</span></button>
   </nav>
 </div>
 
@@ -56,9 +57,24 @@
 <script src="js/store.js"></script>
 <script src="js/league.js"></script>
 <script src="js/xlsx.js"></script>
+<script src="js/scan.js"></script>
+<script src="js/insights.js"></script>
 <script src="js/sample.js"></script>
 <script src="js/charts.js"></script>
-<script src="js/app.js"></script>
-<script src="js/league-ui.js"></script>
+<script src="js/ui/core.js"></script>
+<script src="js/ui/shared.js"></script>
+<script src="js/ui/home.js"></script>
+<script src="js/ui/setup.js"></script>
+<script src="js/ui/entry.js"></script>
+<script src="js/ui/editor.js"></script>
+<script src="js/ui/photo.js"></script>
+<script src="js/ui/games.js"></script>
+<script src="js/ui/stats.js"></script>
+<script src="js/ui/more.js"></script>
+<script src="js/ui/league-shell.js"></script>
+<script src="js/ui/league-scores.js"></script>
+<script src="js/ui/league-results.js"></script>
+<script src="js/ui/league-admin.js"></script>
+<script src="js/ui/boot.js"></script>
 </body>
 </html>

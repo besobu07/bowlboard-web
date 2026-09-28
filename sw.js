@@ -1,11 +1,34 @@
 /* BowlBoard offline support: keeps the app itself on the phone so it opens at the
  * lanes with no signal. Your games are stored separately (localStorage/IndexedDB)
  * and are never touched here. build.py stamps VERSION so each deploy refreshes. */
-const VERSION = 'a77ba18989';
+const VERSION = '3d743f2024';
 const CACHE = 'bowlboard-' + VERSION;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
-  './js/score.js', './js/data.js', './js/store.js', './js/league.js', './js/xlsx.js', './js/sample.js', './js/charts.js', './js/app.js', './js/league-ui.js',
+  './js/score.js',
+  './js/data.js',
+  './js/store.js',
+  './js/league.js',
+  './js/xlsx.js',
+  './js/scan.js',
+  './js/insights.js',
+  './js/sample.js',
+  './js/charts.js',
+  './js/ui/core.js',
+  './js/ui/shared.js',
+  './js/ui/home.js',
+  './js/ui/setup.js',
+  './js/ui/entry.js',
+  './js/ui/editor.js',
+  './js/ui/photo.js',
+  './js/ui/games.js',
+  './js/ui/stats.js',
+  './js/ui/more.js',
+  './js/ui/league-shell.js',
+  './js/ui/league-scores.js',
+  './js/ui/league-results.js',
+  './js/ui/league-admin.js',
+  './js/ui/boot.js',
   './logo.jpg', './logo-icon.jpg', './favicon.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png',
 ];
 
@@ -21,7 +44,8 @@ self.addEventListener('activate', e => {
 
 // Same-origin GETs: answer from the cache straight away, refresh it in the background.
 // Page loads fall back to the cached app when offline. Other sites (the photo-scan
-// library) go to the network as normal.
+// library) go to the network as normal. User data never goes through here: it lives in
+// localStorage/IndexedDB, and any future server data must use paths this worker skips.
 self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;

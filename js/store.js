@@ -1,9 +1,16 @@
-/* BowlBoard persistence — on-device store (prototype).
+/* BowlBoard persistence — on-device store.
  *
  * Game/league data lives in one JSON document in localStorage; score-sheet photos
  * live in IndexedDB (Store.photos) so the JSON stays small. All reads go through
  * Store.state and all writes end in Store.save() / Store.saveSoon(), so swapping
  * this file for a cloud-backed version (accounts + sync) doesn't touch the screens.
+ *
+ * Safety net (v0.6):
+ *   - Automatic copies (Store.snapshots) in IndexedDB: a rolling copy at most every
+ *     12 hours, one after each league night, and one before anything that replaces
+ *     or erases data (restore, erase, league delete/replace, data upgrades).
+ *   - If the saved data can't be read, it is set aside (never overwritten) and
+ *     Store.recovery describes what happened so the app can offer a restore.
  *
  * Schema v3:
  *   games[]   {id, date, centerId, ballId, lanes:[left,right], pattern, mode,
@@ -12,7 +19,8 @@
  *   centers[] {id, name, city, sample}
  *   balls[]   {id, brand, name, cover, weight, custom, sample}
  *   leagues[] see js/league.js
- *   lastBackupAt, backupNudgeAt, seeded
+ *   profile   {name, haptics}
+ *   lastBackupAt, backupNudgeAt, backupPromptAt, leagueEditAt, seeded
  */
 (function (global) {
   'use strict';
@@ -50,10 +58,12 @@
   function migrate(s) {
     if (!s || typeof s !== 'object' || !Array.isArray(s.games)) return null;
     const out = Object.assign(blank(), s);
+    // Drop anything that isn't a record rather than crash on it later.
+    out.games = s.games.filter(g => g && typeof g === 'object' && g.id);
     if (!s.version || s.version < 2) {
       out.centers = Array.isArray(s.alleys) ? s.alleys : [];
       delete out.alleys;
-      out.games = s.games.map(g => {
+      out.games = out.games.map(g => {
         const n = Object.assign({}, g);
         if (n.alleyId !== undefined) { n.centerId = n.alleyId; delete n.alleyId; }
         return n;
@@ -71,20 +81,44 @@
       if (g.thumb !== undefined && !safeImage(g.thumb)) delete g.thumb;
     });
     ['centers', 'balls', 'leagues'].forEach(k => { if (!Array.isArray(out[k])) out[k] = []; });
-    if (!out.profile) out.profile = { name: '' };
+    ['centers', 'balls'].forEach(k => { out[k] = out[k].filter(x => x && typeof x === 'object' && x.id); });
+    out.leagues = out.leagues.filter(l => l && typeof l === 'object' && l.id).map(l => {
+      ['teams', 'bowlers', 'schedule'].forEach(k => { if (!Array.isArray(l[k])) l[k] = []; });
+      if (!l.results || typeof l.results !== 'object') l.results = {};
+      return l;
+    });
+    if (!out.profile || typeof out.profile !== 'object') out.profile = { name: '' };
     return out;
   }
 
   let storageOK = true;
-  function load() {
-    try {
-      const raw = localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY);
-      if (raw) {
-        const m = migrate(JSON.parse(raw));
-        if (m) return m;
-      }
-    } catch (e) { storageOK = false; }
+  let recovery = null;      // set when saved data couldn't be read
+  let blockSaves = false;   // true until unreadable data has been set aside somewhere
+  let pendingRaw = null;    // raw text to copy into a snapshot once IndexedDB is up
+  const UNREADABLE_KEY = KEY + '.unreadable';
+
+  let unreadableRaw = null;
+  function setAside(raw, why) {
+    unreadableRaw = raw;
+    let kept = false;
+    try { localStorage.setItem(UNREADABLE_KEY, raw); kept = true; } catch (e) { /* storage full */ }
+    recovery = { why, kept, at: new Date().toISOString(), bytes: raw.length };
+    pendingRaw = { raw, reason: 'unreadable' };
+    blockSaves = !kept; // never overwrite the only copy of someone's data
     return blank();
+  }
+
+  function load() {
+    let raw = null;
+    try { raw = localStorage.getItem(KEY) || localStorage.getItem(OLD_KEY); } catch (e) { storageOK = false; return blank(); }
+    if (!raw) return blank();
+    let parsed;
+    try { parsed = JSON.parse(raw); } catch (e) { return setAside(raw, 'unreadable'); }
+    let m;
+    try { m = migrate(parsed); } catch (e) { return setAside(raw, 'unreadable'); }
+    if (!m) return setAside(raw, 'not-bowlboard');
+    if (!parsed.version || parsed.version < VERSION) pendingRaw = { raw, reason: 'before-upgrade' };
+    return m;
   }
 
   const state = load();
@@ -92,6 +126,11 @@
   let saveTimer = null;
   function save() {
     clearTimeout(saveTimer); saveTimer = null;
+    if (blockSaves) {
+      storageOK = false;
+      if (Store.onSaveError) Store.onSaveError(new Error('blocked until unreadable data is kept'));
+      return false;
+    }
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
       storageOK = true;
@@ -153,6 +192,114 @@
     };
   })();
 
+  /* ---------- automatic copies (IndexedDB) ---------- */
+  function hash(str) { let h = 5381; for (let i = 0; i < str.length; i++) h = ((h << 5) + h + str.charCodeAt(i)) | 0; return (h >>> 0).toString(36); }
+  // Retention: the newest 3 of each kind, plus anything from the last 24 hours (up to 30
+  // copies), so a busy night or trying several copies in a row can't push out the one
+  // you need. Unreadable data is kept until you deal with it.
+  const KEEP_EACH = 3, KEEP_MAX = 30, YOUNG_MS = 24 * 36e5;
+  const snapshots = (function () {
+    let dbp = null;
+    function db() {
+      if (dbp) return dbp;
+      dbp = new Promise(resolve => {
+        try {
+          const req = global.indexedDB.open('bowlboard-safety', 1);
+          req.onupgradeneeded = () => req.result.createObjectStore('snapshots', { keyPath: 'id' });
+          req.onsuccess = () => resolve(req.result);
+          req.onerror = () => resolve(null);
+        } catch (e) { resolve(null); }
+      });
+      return dbp;
+    }
+    function tx(mode, fn) {
+      return db().then(d => new Promise(resolve => {
+        if (!d) return resolve(null);
+        try {
+          const t = d.transaction('snapshots', mode);
+          const req = fn(t.objectStore('snapshots'));
+          t.oncomplete = () => resolve(req && req.result !== undefined ? req.result : true);
+          t.onerror = t.onabort = () => resolve(null);
+        } catch (e) { resolve(null); }
+      }));
+    }
+    const meta = x => ({ id: x.id, at: x.at, reason: x.reason, games: x.games, leagues: x.leagues, bytes: x.bytes, readable: x.readable !== false });
+    function all() { return tx('readonly', s => s.getAll()).then(r => (r || []).sort((a, b) => b.at.localeCompare(a.at))); }
+    async function prune() {
+      const list = await all();
+      const drop = [];
+      const seen = {};
+      let kept = 0;
+      const now = Date.now();
+      list.forEach(x => {
+        if (x.reason === 'unreadable') { kept++; return; }
+        const n = (seen[x.reason] = (seen[x.reason] || 0) + 1);
+        const young = now - new Date(x.at).getTime() < YOUNG_MS;
+        if (n <= KEEP_EACH || (young && kept < KEEP_MAX)) { kept++; return; }
+        drop.push(x.id);
+      });
+      if (drop.length) await tx('readwrite', s => { drop.forEach(id => s.delete(id)); return null; });
+    }
+    // Copy the current data (or a raw text) with a reason. If an identical copy is
+    // already kept, that one is returned instead, unless force is set.
+    async function take(reason, opts) {
+      opts = opts || {};
+      const json = opts.raw != null ? opts.raw : JSON.stringify(state);
+      const h = hash(json);
+      if (!opts.force) {
+        const same = (await all()).find(x => x.hash === h);
+        if (same) return meta(same);
+      }
+      let games = 0, leagues = 0, readable = true;
+      try { const d = JSON.parse(json); games = (d.games || []).length; leagues = (d.leagues || []).length; } catch (e) { readable = false; }
+      const now = new Date();
+      const rec = { id: now.toISOString() + '-' + Math.floor(Math.random() * 1e6), at: now.toISOString(), reason, json, hash: h, games, leagues, bytes: json.length, readable };
+      const ok = await tx('readwrite', s => s.put(rec));
+      if (!ok) return null;
+      await prune();
+      return meta(rec);
+    }
+    return {
+      take,
+      list: () => all().then(l => l.map(meta)),
+      get: id => tx('readonly', s => s.get(id)),
+      // Rolling copy: at most one every 12 hours, only when there's something to keep.
+      async auto() {
+        if (!state.games.length && !state.leagues.length) return null;
+        const last = (await all()).find(x => x.reason === 'auto');
+        if (last && Date.now() - new Date(last.at).getTime() < 12 * 36e5) return null;
+        return take('auto');
+      },
+      async restore(id) {
+        const rec = await tx('readonly', s => s.get(id));
+        if (!rec) return { ok: false, error: 'That copy is gone.' };
+        let data;
+        try { data = JSON.parse(rec.json); } catch (e) { return { ok: false, error: 'That copy can’t be read. Download it for support instead.' }; }
+        let m = null;
+        try { m = migrate(data); } catch (e) { /* treated as not BowlBoard data */ }
+        if (!m) return { ok: false, error: 'That copy isn’t BowlBoard data.' };
+        // Keep what's here first (even after unreadable data, anything entered since counts).
+        if (state.games.length || state.leagues.length || state.balls.length || state.centers.length) {
+          const kept = await take('before-restore');
+          if (!kept) return { ok: false, error: 'Couldn’t keep a copy of what’s here first, so nothing was changed.' };
+        }
+        replaceState(m); blockSaves = false; recovery = null; syncLinks(); save();
+        return { ok: true, games: m.games.length, leagues: m.leagues.length };
+      },
+      available: () => db().then(d => !!d),
+    };
+  })();
+  // Copy the pre-upgrade or unreadable text into a snapshot as soon as IndexedDB is ready.
+  function keepPendingRaw() {
+    if (!pendingRaw) return Promise.resolve(null);
+    const p = pendingRaw; pendingRaw = null;
+    return snapshots.take(p.reason, { raw: p.raw, force: true }).then(m => {
+      if (m && p.reason === 'unreadable' && recovery) { recovery.kept = true; blockSaves = false; }
+      return m;
+    });
+  }
+  if (typeof indexedDB !== 'undefined') setTimeout(keepPendingRaw, 0);
+
   // Move any photos still embedded in the JSON (v2 data) into IndexedDB.
   function movePhotosOut() {
     const pending = state.games.filter(g => g.thumb);
@@ -180,9 +327,20 @@
   }
 
   const Store = {
-    state, save, saveSoon, flush, uid, migrate, safeImage, parseLanes, photos, syncLinks,
+    state, save, saveSoon, flush, uid, migrate, safeImage, parseLanes, photos, syncLinks, snapshots, keepPendingRaw,
     get storageOK() { return storageOK; },
+    get recovery() { return recovery; },
+    // "Start fresh" after unreadable data: the unreadable text stays set aside.
+    dismissRecovery() { recovery = null; blockSaves = false; save(); },
+    unreadableText() { let t = null; try { t = localStorage.getItem(UNREADABLE_KEY); } catch (e) { /* ignore */ } return t || unreadableRaw; },
     onSaveError: null,
+    // League changes in this session (the app offers a backup after league night).
+    sessionLeagueEdit: false,
+    markLeagueEdit(l) {
+      if (l && l.sample) return;
+      state.leagueEditAt = new Date().toISOString();
+      Store.sessionLeagueEdit = true;
+    },
 
     /* games */
     getGame(id) { return byId(state.games, id); },
@@ -262,8 +420,14 @@
 
     /* leagues */
     getLeague(id) { return byId(state.leagues, id); },
-    addLeague(l) { l.id = l.id || uid(); state.leagues.push(l); save(); return l; },
+    addLeague(l) {
+      l.id = l.id || uid();
+      const have = byId(state.leagues, l.id);
+      if (have) return have; // a double tap must not add the same league twice
+      state.leagues.push(l); save(); return l;
+    },
     deleteLeague(id) {
+      snapshots.take('before-league-delete', { force: true });
       state.leagues = state.leagues.filter(l => l.id !== id);
       state.games.forEach(g => { if (g.leagueId === id) g.leagueId = ''; }); // your own games stay, as practice
       save();
@@ -275,17 +439,31 @@
       return JSON.stringify({ app: 'BowlBoard', exportedAt: new Date().toISOString(), data: state }, null, 2);
     },
     markBackedUp() { state.lastBackupAt = new Date().toISOString(); save(); },
+    // Is this text a BowlBoard backup? (Checked before anything is copied or replaced.)
+    checkBackup(text) {
+      let parsed;
+      try { parsed = JSON.parse(text); } catch (e) { return { ok: false, error: 'That file is not valid JSON.' }; }
+      const data = parsed && parsed.data ? parsed.data : parsed;
+      let m = null;
+      try { m = migrate(JSON.parse(JSON.stringify(data))); } catch (e) { /* not a backup */ }
+      if (!m) return { ok: false, error: 'That file is not a BowlBoard backup.' };
+      return { ok: true, games: m.games.length, leagues: m.leagues.length };
+    },
+    // Restoring replaces everything, so an automatic copy of what's here is taken first
+    // (callers that can wait should await Store.snapshots.take('before-restore') before this).
     importJSON(text) {
       let parsed;
       try { parsed = JSON.parse(text); } catch (e) { return { ok: false, error: 'That file is not valid JSON.' }; }
       const data = parsed && parsed.data ? parsed.data : parsed;
-      const m = migrate(data);
+      let m = null;
+      try { m = migrate(data); } catch (e) { /* treated as not a backup */ }
       if (!m) return { ok: false, error: 'That file is not a BowlBoard backup.' };
-      replaceState(m); syncLinks(); save();
+      replaceState(m); blockSaves = false; recovery = null; syncLinks(); save();
       return { ok: true, games: m.games.length, leagues: m.leagues.length };
     },
     resetAll() { replaceState(blank()); save(); },
   };
 
   global.BBStore = Store;
+  if (typeof module !== 'undefined' && module.exports) module.exports = Store;
 })(typeof window !== 'undefined' ? window : globalThis);
