@@ -1380,6 +1380,16 @@ async function installFlow() {
   openSheet('<h3>Install BowlBoard</h3>' + body + '<p class="small muted">The installed app keeps its own copy of your data. If you already entered games here, back them up and restore them in the installed app.</p><button class="btn mt8" data-close>Got it</button>');
 }
 
+/* ---------- fixed header: keep the page clear of it ---------- */
+function measureHeader() {
+  const h = document.querySelector('.app-header');
+  if (h) document.documentElement.style.setProperty('--header-h', h.offsetHeight + 'px');
+}
+window.addEventListener('resize', measureHeader);
+window.addEventListener('orientationchange', () => setTimeout(measureHeader, 250));
+document.addEventListener('DOMContentLoaded', measureHeader);
+window.addEventListener('load', measureHeader); // logo image may change the height
+
 /* ---------- first run ---------- */
 if (BUILD.seed && !Store.state.seeded && !Store.state.games.length && !Store.state.leagues.length) {
   try { Sample.seed(Store, S, LG, todayISO()); } catch (e) { /* samples are optional */ }

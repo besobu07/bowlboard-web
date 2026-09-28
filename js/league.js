@@ -365,6 +365,8 @@
     return isNaN(d) ? iso : d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' });
   }
   const escH = s => String(s == null ? '' : s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  // Thousands separators for display (never in CSV exports).
+  const fmtN = n => (n == null || n === '' ? '–' : Number(n).toLocaleString('en-US'));
   const fmtPts = n => (Number.isInteger(n) ? String(n) : n.toFixed(1));
 
   function pointsLine(league) {
@@ -405,13 +407,13 @@
     d.results.forEach(r => {
       if (!r.A.entered && !r.B.entered) { L.push('  ' + teamName(league, r.m.a) + ' vs ' + teamName(league, r.m.b) + ' — not entered yet'); return; }
       if (!r.decided) { L.push('  ' + teamName(league, r.m.a) + ' vs ' + teamName(league, r.m.b) + ' — scores incomplete'); return; }
-      L.push('  ' + teamName(league, r.m.a) + ' ' + fmtPts(r.ptsA) + ' – ' + fmtPts(r.ptsB) + ' pts ' + teamName(league, r.m.b) + '   (' + r.seriesA + ' to ' + r.seriesB + (d.useH ? ' w/ hcp' : '') + ')');
+      L.push('  ' + teamName(league, r.m.a) + ' ' + fmtPts(r.ptsA) + ' – ' + fmtPts(r.ptsB) + ' pts ' + teamName(league, r.m.b) + '   (' + fmtN(r.seriesA) + ' to ' + fmtN(r.seriesB) + (d.useH ? ' w/ hcp' : '') + ')');
     });
     if (d.bye) L.push('  Bye: ' + teamName(league, d.bye) + byeNote(league));
     L.push('');
     L.push('STANDINGS');
     L.push('  ' + pad('#', 3) + pad('Team', 22) + lpad('Pts W', 7) + lpad('Pts L', 7) + lpad('Pins', 8));
-    d.standings.forEach(s => L.push('  ' + pad(s.place, 3) + pad(s.name, 22) + lpad(fmtPts(s.won), 7) + lpad(fmtPts(s.lost), 7) + lpad(d.useH ? s.hcpPins : s.scratch, 8)));
+    d.standings.forEach(s => L.push('  ' + pad(s.place, 3) + pad(s.name, 22) + lpad(fmtPts(s.won), 7) + lpad(fmtPts(s.lost), 7) + lpad(fmtN(d.useH ? s.hcpPins : s.scratch), 8)));
     L.push('  Points: ' + pointsLine(league));
     L.push('');
     L.push('HIGHS THIS WEEK');
@@ -472,15 +474,15 @@
         }
         const aWin = r.ptsA > r.ptsB, bWin = r.ptsB > r.ptsA;
         return '<tr><td style="' + td + '"><span style="' + (aWin ? 'font-weight:700' : '') + '">' + escH(teamName(league, r.m.a)) + '</span> vs <span style="' + (bWin ? 'font-weight:700' : '') + '">' + escH(teamName(league, r.m.b)) + '</span><div style="font-size:12px;color:' + C.muted + '">Lanes ' + escH(r.m.lanes) + ' · games ' + r.games.map(g => g.a + '–' + g.b).join(', ') + '</div></td>' +
-          '<td style="' + tdr + '">' + r.seriesA + ' – ' + r.seriesB + '</td><td style="' + tdr + 'font-weight:700">' + fmtPts(r.ptsA) + '–' + fmtPts(r.ptsB) + ' pts</td></tr>';
+          '<td style="' + tdr + '">' + fmtN(r.seriesA) + ' – ' + fmtN(r.seriesB) + '</td><td style="' + tdr + 'font-weight:700">' + fmtPts(r.ptsA) + '–' + fmtPts(r.ptsB) + ' pts</td></tr>';
       }).join('') + (d.bye ? '<tr><td colspan="3" style="' + td + 'color:' + C.muted + '">Bye: ' + escH(teamName(league, d.bye) + byeNote(league)) + '</td></tr>' : ''));
 
     h += h2('Standings');
     h += table('<tr><th style="' + th + '">#</th><th style="' + th + '">Team</th><th style="' + thr + '">Pts won</th><th style="' + thr + '">Pts lost</th><th style="' + thr + '">' + (d.useH ? 'Hcp pins' : 'Pins') + '</th><th style="' + thr + '">High ser.</th></tr>',
-      d.standings.map(s => '<tr><td style="' + td + 'color:' + C.muted + '">' + s.place + '</td><td style="' + td + 'font-weight:600">' + escH(s.name) + '</td><td style="' + tdr + 'font-weight:700">' + fmtPts(s.won) + '</td><td style="' + tdr + '">' + fmtPts(s.lost) + '</td><td style="' + tdr + '">' + (d.useH ? s.hcpPins : s.scratch) + '</td><td style="' + tdr + '">' + (s.highSeries || '–') + '</td></tr>').join(''));
+      d.standings.map(s => '<tr><td style="' + td + 'color:' + C.muted + '">' + s.place + '</td><td style="' + td + 'font-weight:600">' + escH(s.name) + '</td><td style="' + tdr + 'font-weight:700">' + fmtPts(s.won) + '</td><td style="' + tdr + '">' + fmtPts(s.lost) + '</td><td style="' + tdr + '">' + fmtN(d.useH ? s.hcpPins : s.scratch) + '</td><td style="' + tdr + '">' + (s.highSeries ? fmtN(s.highSeries) : '–') + '</td></tr>').join(''));
 
     h += '<div style="font-size:12px;color:' + C.muted + ';margin-top:6px">Points: ' + escH(pointsLine(league)) + '</div>';
-    const hiBlock = (label, arr, key) => arr.length ? '<tr><td style="' + td + 'color:' + C.muted + ';width:38%">' + label + '</td><td style="' + td + '">' + arr.map((x, i) => (i === 0 ? '<b>' : '') + escH(x.name) + ' ' + x[key] + (i === 0 ? '</b>' : '')).join(' · ') + '</td></tr>' : '';
+    const hiBlock = (label, arr, key) => arr.length ? '<tr><td style="' + td + 'color:' + C.muted + ';width:38%">' + label + '</td><td style="' + td + '">' + arr.map((x, i) => (i === 0 ? '<b>' : '') + escH(x.name) + ' ' + fmtN(x[key]) + (i === 0 ? '</b>' : '')).join(' · ') + '</td></tr>' : '';
     h += h2('This week’s highs');
     h += table('', hiBlock('Scratch game', d.highs.scratchGame, 'score') + hiBlock('Scratch series', d.highs.scratchSeries, 'score') +
       (d.useH ? hiBlock('Handicap game', d.highs.hcpGame, 'hcpScore') + hiBlock('Handicap series', d.highs.hcpSeries, 'hcpScore') : '') +
@@ -1089,7 +1091,7 @@
     validScore, gamesBefore, averageBefore, handicapFor, defaultLines, teamLines, scoreLine, teamWeek,
     matchupResult, pointsPerNight, pointsLine, byeNote, ROUNDING_LABEL, standings,
     me, weekForDate, myLineSlot, pushMyGames, syncLinks, unlinkGame, findLink, sheetOnlyGames, bowlerStats, weekHighlights,
-    recapData, recapText, recapHTML, recapSubject, recipients, fmtDate, fmtPts,
+    recapData, recapText, recapHTML, recapSubject, recipients, fmtDate, fmtPts, fmtN,
     parseCSV, toCSV, rosterFromCSV, applyRoster, scoresFromCSV, applyScores, seasonRecords, importSeason, verifySeason, parseDateCell, standingsCSV, weekScoresCSV, averagesCSV,
   };
 

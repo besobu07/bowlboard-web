@@ -447,7 +447,7 @@ function teamCardHTML(l, w, tid) {
   h += '<table class="totals" data-totals="' + tid + '"></table>';
   return h;
 }
-const serText = s => (s.games.some(g => g != null) ? '<b>' + s.series + '</b>' + (s.hcp ? '<small>' + s.hcpSeries + ' w/ hcp</small>' : '') : '');
+const serText = s => (s.games.some(g => g != null) ? '<b>' + LG.fmtN(s.series) + '</b>' + (s.hcp ? '<small>' + LG.fmtN(s.hcpSeries) + ' w/ hcp</small>' : '') : '');
 
 // Games you logged yourself on this league night (tagged to this league, else same date).
 function myLoggedGames(l, w) {
@@ -524,12 +524,12 @@ function updateMatchupTotals(l, w, m, el) {
     const tbl = el.querySelector('[data-totals="' + tid + '"]');
     if (!tbl) return;
     const T2 = T.entered ? T : LG.teamWeek(Object.assign({}, l, { results: Object.assign({}, l.results, { [w]: { lines: LG.defaultLines(l, tid) } }) }), w, tid);
-    const cell = (v, i) => '<td class="' + (i != null && r.games[i] && r.games[i].winner === side ? 'won' : '') + '">' + (v == null ? '–' : v) + '</td>';
+    const cell = (v, i) => '<td class="' + (i != null && r.games[i] && r.games[i].winner === side ? 'won' : '') + '">' + (v == null ? '–' : LG.fmtN(v)) + '</td>';
     let h = '<tr><th></th>' + Array.from({ length: G }, (_, i) => '<th>G' + (i + 1) + '</th>').join('') + '<th>Total</th></tr>';
     h += '<tr><td>Scratch</td>' + T2.scratch.map(v => cell(v)).join('') + cell(T2.scratch.every(x => x != null) ? T2.series : null) + '</tr>';
     if (useH) {
       h += '<tr><td>Hcp</td>' + T2.hcp.map(v => cell(v)).join('') + cell(T2.hcp.every(x => x != null) ? T2.hcp.reduce((a, b) => a + b, 0) : null) + '</tr>';
-      h += '<tr class="tot"><td>Total</td>' + T2.total.map((v, i) => cell(v, i)).join('') + '<td class="' + (r.decided && ((side === 'a' && r.seriesA > r.seriesB) || (side === 'b' && r.seriesB > r.seriesA)) ? 'won' : '') + '">' + (T2.complete ? T2.hcpSeries : '–') + '</td></tr>';
+      h += '<tr class="tot"><td>Total</td>' + T2.total.map((v, i) => cell(v, i)).join('') + '<td class="' + (r.decided && ((side === 'a' && r.seriesA > r.seriesB) || (side === 'b' && r.seriesB > r.seriesA)) ? 'won' : '') + '">' + (T2.complete ? LG.fmtN(T2.hcpSeries) : '–') + '</td></tr>';
     }
     tbl.innerHTML = h;
     const p = el.querySelector('[data-pts="' + tid + '"]');
@@ -568,10 +568,10 @@ function tabStandings(l, body) {
   let h = weekPicker(l, 'Through week');
   if (!LG.lastScoredWeek(l)) h += '<p class="small muted center">No scores yet — standings fill in once week 1 is entered.</p>';
   h += '<div class="card"><h3>Team standings</h3><div class="table-wrap"><table class="data"><tr><th>#</th><th class="l">Team</th><th title="Points won">Pts W</th><th title="Points lost">Pts L</th><th>' + (useH ? 'Hcp pins' : 'Pins') + '</th><th>HG</th><th>HS</th></tr>' +
-    st.map(s => '<tr><td class="muted">' + s.place + '</td><td class="l"><b>' + esc(s.name) + '</b></td><td><b>' + LG.fmtPts(s.won) + '</b></td><td>' + LG.fmtPts(s.lost) + '</td><td>' + (useH ? s.hcpPins : s.scratch) + '</td><td>' + (s.highGame || '–') + '</td><td>' + (s.highSeries || '–') + '</td></tr>').join('') +
+    st.map(s => '<tr><td class="muted">' + s.place + '</td><td class="l"><b>' + esc(s.name) + '</b></td><td><b>' + LG.fmtPts(s.won) + '</b></td><td>' + LG.fmtPts(s.lost) + '</td><td>' + LG.fmtN(useH ? s.hcpPins : s.scratch) + '</td><td>' + (s.highGame ? LG.fmtN(s.highGame) : '–') + '</td><td>' + (s.highSeries ? LG.fmtN(s.highSeries) : '–') + '</td></tr>').join('') +
     '</table></div><div class="small muted">Pts W / Pts L are points, not games: ' + esc(LG.pointsLine(l)) + '. HG / HS = team high game / series' + (useH ? ' with handicap' : '') + '.</div></div>';
   h += '<div class="card"><h3>Bowler averages</h3><div class="table-wrap"><table class="data"><tr><th class="l">Bowler</th><th>Gms</th><th>Avg</th><th>HG</th><th>HS</th>' + (useH ? '<th>Hcp</th>' : '') + '</tr>' +
-    avgs.map(b => '<tr class="' + (b.isMe ? 'me' : '') + '"><td class="l">' + esc(b.name) + (b.isMe ? ' <span class="badge">you</span>' : '') + '<small>' + esc(b.team) + '</small></td><td>' + b.games + '</td><td><b>' + (b.avg == null ? '<span class="muted" title="Average used for handicap">' + b.currentAvg + '*</span>' : b.avg) + '</b></td><td>' + (b.highGame == null ? '–' : b.highGame) + '</td><td>' + (b.highSeries == null ? '–' : b.highSeries) + '</td>' + (useH ? '<td>' + b.hcp + '</td>' : '') + '</tr>').join('') +
+    avgs.map(b => '<tr class="' + (b.isMe ? 'me' : '') + '"><td class="l">' + esc(b.name) + (b.isMe ? ' <span class="badge">you</span>' : '') + '<small>' + esc(b.team) + '</small></td><td>' + b.games + '</td><td><b>' + (b.avg == null ? '<span class="muted" title="Average used for handicap">' + b.currentAvg + '*</span>' : b.avg) + '</b></td><td>' + (b.highGame == null ? '–' : b.highGame) + '</td><td>' + (b.highSeries == null ? '–' : LG.fmtN(b.highSeries)) + '</td>' + (useH ? '<td>' + b.hcp + '</td>' : '') + '</tr>').join('') +
     '</table></div><div class="small muted">Averages are truncated (189.9 → 189).' + (useH ? ' Hcp is what each bowler gets next week.' : '') + ' * = entering average, no league games yet.</div></div>';
   h += '<div class="row"><button class="btn secondary grow" id="stCsv">Standings CSV</button><button class="btn secondary grow" id="avCsv">Averages CSV</button></div>';
   body.innerHTML = h;
