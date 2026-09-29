@@ -559,6 +559,9 @@
   function parseCSV(text) {
     const rows = [];
     let row = [], cell = '', q = false;
+    // Excel in much of Europe saves CSV with semicolons; if the first line has more of those than commas, split on them.
+    const head = String(text).split(/\r?\n/, 1)[0].replace(/"[^"]*"/g, '');
+    const semi = (head.match(/;/g) || []).length > (head.match(/,/g) || []).length;
     for (let i = 0; i < text.length; i++) {
       const c = text[i];
       if (q) {
@@ -566,7 +569,7 @@
         else if (c === '"') q = false;
         else cell += c;
       } else if (c === '"') q = true;
-      else if (c === ',' || c === '\t') { row.push(cell); cell = ''; }
+      else if ((semi ? c === ';' : c === ',') || c === '\t') { row.push(cell); cell = ''; }
       else if (c === '\n' || c === '\r') {
         if (c === '\r' && text[i + 1] === '\n') i++;
         row.push(cell); rows.push(row); row = []; cell = '';
@@ -991,7 +994,7 @@
   // Where "me" bowls in a week: an existing line with me on it, else my team's lineup.
   function myLineSlot(league, week) {
     const b = me(league);
-    if (!b) return { ok: false, error: 'Pick yourself on the roster first (League → Bowlers → your name → This is me).' };
+    if (!b) return { ok: false, error: 'Pick which bowler you are first (League tab → Pick my name).' };
     const r = league.results && league.results[week];
     const existing = r && r.lines.find(l => l.bowlerId === b.id);
     if (existing) return { ok: true, bowler: b, teamId: existing.teamId, line: existing };

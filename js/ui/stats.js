@@ -32,7 +32,7 @@ RENDER.stats = function () {
   const series = Store.allSeries(games);
   const today = todayISO();
 
-  let h = '<h2 class="screen-title">Stats</h2><div class="filters">' +
+  let h = '<div class="head-row"><h2 class="screen-title">Stats</h2>' + (games.length ? '<button class="link-btn" id="stShare">' + icon('share') + 'Share</button>' : '') + '</div><div class="filters">' +
     '<select id="stPreset" aria-label="Date range">' + BB.rangeOptions(statFilter.preset) + '</select>' +
     '<select id="stType" aria-label="Practice or league">' + BB.typeOptions(statFilter.type) + '</select></div>';
   if (!games.length) {
@@ -53,6 +53,7 @@ RENDER.stats = function () {
     h += '<div class="card insights"><h3>' + icon('sparkle') + 'What stands out</h3><ul>' +
       ins.map(x => '<li class="' + x.tone + '">' + esc(x.text) + '</li>').join('') + '</ul></div>';
   }
+  h += BB.achCardHTML ? BB.achCardHTML() : '';
   const chrono = I.chrono(games);
   const last5 = chrono.slice(-5);
   const cons = I.consistency(totals);
@@ -117,6 +118,7 @@ window.addEventListener('resize', () => {
 function bindStatFilters() {
   on('stPreset', 'change', e => { statFilter.preset = e.target.value; RENDER.stats(); });
   on('stType', 'change', e => { statFilter.type = e.target.value; RENDER.stats(); });
+  on('stShare', 'click', () => BB.shareCard('season', { preset: statFilter.preset, type: statFilter.type }));
 }
 // Official league numbers for leagues where you've marked yourself on the roster.
 function myLeagueStatsHTML() {
@@ -138,7 +140,7 @@ RENDER.ball = function (p) {
   if (!b) { show('stats'); return; }
   const back = p.from === 'balls' ? backLink('balls', 'My arsenal') : backLink('stats', 'Stats');
   const r = I.ballReport(myGames(), b.id);
-  let h = back + '<div class="ball-head">' + icon('ball', 'ball-ic') + '<div><h2 class="screen-title">' + esc(b.brand + ' ' + b.name) + '</h2><div class="small muted">' +
+  let h = back + '<div class="ball-head">' + BB.ballIcon(b.brand, 'lg') + '<div><h2 class="screen-title">' + esc(b.brand + ' ' + b.name) + '</h2><div class="small muted">' +
     esc([b.weight ? b.weight + ' lb' : null, b.cover].filter(Boolean).join(' · ')) + '</div></div></div>';
   if (!r.games) {
     root.innerHTML = h + '<div class="empty">No games with this ball yet. Pick it when you start a game, or on the scoring screen.</div>';

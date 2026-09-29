@@ -33,6 +33,7 @@
     <section id="screen-ball" class="screen"></section>
     <section id="screen-history" class="screen"></section>
     <section id="screen-stats" class="screen"></section>
+    <section id="screen-achievements" class="screen"></section>
     <section id="screen-league" class="screen"></section>
     <section id="screen-matchup" class="screen"></section>
     <section id="screen-more" class="screen"></section>
@@ -51,19 +52,28 @@
 </div>
 
 <div id="toast" class="toast" role="status" aria-live="polite"></div>
+<!-- artwork the share cards draw from (never shown; inlined into the single-file builds) -->
+<div hidden aria-hidden="true"><img id="scLogo" src="share-logo.png" alt=""></div>
 <div id="sheet" class="sheet-wrap" hidden><div class="sheet" role="dialog" aria-modal="true"></div></div>
 
 <script src="js/score.js"></script>
 <script src="js/data.js"></script>
+<script src="js/ball-list.js"></script>
 <script src="js/store.js"></script>
 <script src="js/league.js"></script>
 <script src="js/xlsx.js"></script>
+<script src="js/games-import.js"></script>
 <script src="js/scan.js"></script>
 <script src="js/insights.js"></script>
+<script src="js/achievements.js"></script>
+<script src="js/xlsx-write.js"></script>
+<script src="js/pdf-write.js"></script>
+<script src="js/export.js"></script>
 <script src="js/sample.js"></script>
 <script src="js/charts.js"></script>
 <script src="js/ui/core.js"></script>
 <script src="js/ui/shared.js"></script>
+<script src="js/ui/ball-add.js"></script>
 <script src="js/ui/home.js"></script>
 <script src="js/ui/setup.js"></script>
 <script src="js/ui/entry.js"></script>
@@ -72,10 +82,14 @@
 <script src="js/ui/games.js"></script>
 <script src="js/ui/stats.js"></script>
 <script src="js/ui/more.js"></script>
+<script src="js/ui/import-scores.js"></script>
+<script src="js/ui/export.js"></script>
+<script src="js/ui/achievements.js"></script>
+<script src="js/ui/share.js"></script>
 <script src="js/ui/league-shell.js"></script>
+<script src="js/ui/league-standings.js"></script>
 <script src="js/ui/league-scores.js"></script>
-<script src="js/ui/league-results.js"></script>
-<script src="js/ui/league-admin.js"></script>
+<script src="js/ui/league-import.js"></script>
 <script src="js/ui/boot.js"></script>
 </body>
 </html>

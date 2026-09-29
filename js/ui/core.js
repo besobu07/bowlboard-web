@@ -54,6 +54,12 @@ const ICONS = {
   clock: C(12, 12, 8.5) + P('M12 7.5V12h3.5'),
   crop: P('M7 3.5V17h13.5') + P('M3.5 7H17v13.5'),
   file: P('M6.5 3.5h7l4 4v13h-11z') + P('M13.5 3.5v4h4'),
+  share: P('M12 15V4') + P('M8 7.5l4-4 4 4') + P('M6 11.5v8h12v-8'),
+  medal: C(12, 9, 5.5) + P('M8.6 13.6 7.2 20.5 12 18.3l4.8 2.2-1.4-6.9'),
+  flame: P('M12 3c1 3.2 4.5 5.2 4.5 9.5a4.5 4.5 0 0 1-9 0c0-2 1-3.4 2-4.5.2 1.4.8 2.2 1.6 2.6C11 8.4 11.2 5.6 12 3z'),
+  target: C(12, 12, 8.5) + C(12, 12, 4.6) + C(12, 12, .8),
+  star: P('M12 3.6l2.5 5.2 5.7.8-4.1 4 1 5.7-5.1-2.7-5.1 2.7 1-5.7-4.1-4 5.7-.8z'),
+  copy: P('M8.5 8.5h11v11h-11z') + P('M15.5 8.5v-4h-11v11h4'),
 };
 function icon(name, cls) {
   return '<svg class="ic' + (cls ? ' ' + cls : '') + '" viewBox="0 0 24 24" aria-hidden="true" focusable="false">' + (ICONS[name] || '') + '</svg>';
@@ -117,9 +123,10 @@ function countUp(node, from, to, ms) {
 }
 
 /* ---------- files and clipboard ---------- */
-function download(filename, text, mime) {
-  if (EMBED) { textSheet(filename, text); return false; }
-  const blob = new Blob([text], { type: mime || 'text/plain' });
+// Saves bytes or text as a file (a Blob works too). Returns false where saving isn't possible (hosted preview).
+function saveFile(filename, data, mime) {
+  if (EMBED) return false;
+  const blob = data instanceof Blob ? data : new Blob([data], { type: mime || 'application/octet-stream' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = filename;
@@ -127,6 +134,10 @@ function download(filename, text, mime) {
   a.click();
   setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 500);
   return true;
+}
+function download(filename, text, mime) {
+  if (EMBED) { textSheet(filename, text); return false; }
+  return saveFile(filename, text, mime || 'text/plain');
 }
 // Where files can't be saved (hosted preview), show the contents with a Copy button instead.
 function textSheet(filename, text) {
@@ -232,7 +243,7 @@ $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeS
 /* ---------- navigation + delegated actions ---------- */
 const RENDER = {};
 const ACT = {}; // ACT[screen][action](el, event)
-const TAB_OF = { new: 'home', entry: 'home', photo: 'home', saved: 'home', game: 'history', ball: 'stats', matchup: 'league', centers: 'more', balls: 'more', backup: 'more' };
+const TAB_OF = { new: 'home', entry: 'home', photo: 'home', saved: 'home', game: 'history', ball: 'stats', achievements: 'stats', matchup: 'league', centers: 'more', balls: 'more', backup: 'more' };
 const nav = { current: 'home', params: {} };
 const leaveHooks = []; // fn(from, to) — e.g. offer a backup after league night
 function show(name, params) {
@@ -280,7 +291,7 @@ ACT._global = {
 
 window.BB = {
   BUILD, EMBED, $, icon, toast, esc, fmtDate, todayISO, daysSince, plural, avgFloor, pct, reduceMotion, haptic, countUp,
-  sheetRoot, screenRoot, el, on, val, download, textSheet, copyText, copyRich, openSheet, closeSheet, ask,
+  sheetRoot, screenRoot, el, on, val, download, saveFile, textSheet, copyText, copyRich, openSheet, closeSheet, ask,
   RENDER, ACT, TAB_OF, nav, show, rerender, backLink, onLeave: fn => leaveHooks.push(fn),
 };
 })();

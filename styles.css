@@ -25,6 +25,7 @@
   --font-head: 'Poppins', 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+[hidden] { display: none !important; }   /* the hidden attribute wins over any display rule, e.g. label.field */
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg);
@@ -792,3 +793,120 @@ a { color: var(--gold); }
 .bowl-card .bc-sub { margin-bottom: 0; }
 .bowl-card .bc-modes { display: flex; flex: 1 1 100%; justify-content: space-evenly; padding: 4px 6px; }
 .bc-modes button { font-size: 13px; padding: 5px 6px; }
+
+/* v0.8: final brand (cream icon, clean wordmark) */
+.bowl-card .bc-mark { width: 64px; height: 64px; border-radius: 15px; box-shadow: 0 4px 14px rgba(0,0,0,.5); }
+.card.welcome .welcome-icon { display: block; width: 96px; height: 96px; margin: 0 auto 10px; border-radius: 22px; box-shadow: 0 8px 22px rgba(0,0,0,.5); }
+.card.welcome .welcome-logo { width: 220px; height: auto; }
+.about .about-icon { display: block; width: 84px; height: 84px; margin: 0 auto 8px; border-radius: 19px; }
+.about .about-wordmark { display: block; width: 200px; margin: 0 auto 4px; }
+.app-wordmark { height: 40px; }
+
+/* v0.8: the league is read-only for bowlers */
+.line-top .who { flex: 1; min-width: 0; font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.game-scores { display: flex; gap: 6px; align-items: center; }
+.game-scores .gs { flex: 1; min-width: 0; text-align: center; padding: 9px 2px; font-size: 18px; font-weight: 700; font-variant-numeric: tabular-nums; background: var(--card2); border: 1px solid var(--line); border-radius: 10px; }
+.game-scores .gs.none { color: var(--muted); font-weight: 500; }
+.game-scores .gs.abs { color: var(--warn); font-size: 14px; }
+.game-scores .gs.linked { border-color: rgba(246,166,35,.6); background: rgba(246,166,35,.06); }
+.game-scores .ser { width: 76px; text-align: right; line-height: 1.1; }
+.game-scores .ser b { display: block; font-size: 18px; }
+.game-scores .ser small { font-size: 11px; color: var(--muted); }
+.link-note .link-btn.inline { margin-left: auto; flex: none; }
+.card.league-options { margin-top: 16px; }
+.card.league-options h3 { margin-bottom: 2px; }
+.link-btn.danger-link { color: var(--danger); margin-top: 10px; display: block; font-weight: 500; }
+
+/* v0.8: importing scores */
+.field-label { font-size: 13px; color: var(--muted); margin: 12px 2px 6px; }
+.field-label small { font-size: 12px; }
+.chips .chip:disabled { opacity: .35; cursor: default; }
+.more-cols { margin-top: 10px; }
+.more-cols summary { cursor: pointer; color: var(--gold); font-size: 14px; font-weight: 600; padding: 4px 0; }
+.import-preview .table-wrap { margin-top: 8px; }
+.import-preview .small { margin: 4px 0; }
+
+/* v0.8: exporting games */
+.head-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.head-row .link-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; padding: 8px 2px; flex: none; }
+.head-row .link-btn .ic { width: 18px; height: 18px; }
+.export-list .list-item:disabled { opacity: .45; cursor: default; }
+
+/* v0.8: achievements */
+.coin { width: 52px; height: 52px; border-radius: 50%; flex: none; display: inline-grid; place-content: center; justify-items: center; text-align: center; line-height: 1; font-family: var(--font-head); color: var(--muted); background: var(--card2); border: 2px dashed #4a4236; }
+.coin b { font-size: 17px; font-weight: 700; letter-spacing: -.3px; }
+.coin b.sm { font-size: 12px; }
+.coin small { font-size: 7.5px; letter-spacing: .8px; font-weight: 700; margin-top: 2px; opacity: .9; }
+.coin .ic { width: 26px; height: 26px; }
+.coin.on { color: #2a1a03; background: radial-gradient(circle at 32% 26%, #ffe7ad 0%, #f6b042 45%, #c97d0d 100%); border: 2px solid rgba(255,236,190,.6); box-shadow: 0 2px 12px rgba(246,166,35,.3), inset 0 -3px 5px rgba(120,60,0,.28); }
+.coin.lg { width: 104px; height: 104px; }
+.coin.lg b { font-size: 34px; }
+.coin.lg b.sm { font-size: 22px; }
+.coin.lg small { font-size: 12px; margin-top: 4px; }
+.coin.lg .ic { width: 50px; height: 50px; }
+.bar { height: 6px; border-radius: 3px; background: var(--card2); overflow: hidden; margin: 8px 0 4px; }
+.bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+.ach-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ach-head h3 { margin: 0; }
+.ach-head h3 .ic { margin-right: 6px; color: var(--gold); }
+.ach-count { font-size: 14px; color: var(--muted); white-space: nowrap; }
+.ach-count b { color: var(--text); font-size: 18px; font-family: var(--font-head); }
+.ach-recent { display: flex; gap: 8px; margin-top: 10px; overflow-x: auto; scrollbar-width: none; }
+.ach-chip { background: none; border: none; padding: 2px; cursor: pointer; flex: none; }
+.ach-summary .ach-total { font-size: 16px; }
+.ach-summary .ach-total b { font-size: 30px; font-family: var(--font-head); color: var(--gold); }
+.ach-row { display: flex; align-items: center; gap: 14px; width: 100%; text-align: left; background: var(--card); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; margin: 8px 0; color: var(--text); font: inherit; cursor: pointer; }
+.ach-row .grow { min-width: 0; }
+.ach-row .t { font-weight: 700; }
+.ach-row .s { font-size: 13px; color: var(--muted); }
+.ach-row .ok { font-size: 13px; color: var(--gold); font-weight: 600; margin-top: 2px; }
+.ach-row.locked .t { color: #d8d0c0; }
+.ach-row .chev { color: var(--muted); display: flex; }
+.ach-row .chev .ic { width: 18px; height: 18px; }
+.card.ach-new { border-color: rgba(246,166,35,.55); background: linear-gradient(180deg, rgba(246,166,35,.10), var(--card) 70%); }
+.ach-new-row { display: flex; align-items: center; gap: 12px; margin-top: 10px; }
+.ach-new-row .t { font-weight: 700; }
+.ach-new-row .s { font-size: 13px; color: var(--muted); }
+.ach-new-row .link-btn { display: inline-flex; align-items: center; gap: 6px; flex: none; }
+.ach-hero { display: flex; align-items: center; gap: 16px; margin: 4px 0 12px; }
+.ach-hero p { margin: 0; color: var(--text); }
+.ach-when { margin: 8px 0 14px; }
+.card .kicker .ic { margin-right: 4px; }
+
+/* v0.8: share cards */
+.share-preview { background: #000; border-radius: 12px; overflow: hidden; margin: 4px 0 12px; min-height: 120px; display: grid; place-items: center; }
+.share-preview img { display: block; width: 100%; max-height: 52vh; object-fit: contain; }
+.share-opts { margin-bottom: 12px; }
+.btn .ic { flex: none; }
+
+/* v0.8: balls (a generic ball tinted by brand), the add-a-ball form, and the collapsed "Details" row on New game */
+.ballico { --bt: hsl(210 62% 46%); --bt-hi: hsl(210 72% 70%); --bt-lo: hsl(210 60% 20%); display: inline-block; flex: none; width: 34px; height: 34px; border-radius: 50%;
+  background: radial-gradient(circle at 61% 27%, rgba(0,0,0,.72) 0 6%, transparent 7.5%), radial-gradient(circle at 73% 36%, rgba(0,0,0,.72) 0 6%, transparent 7.5%),
+    radial-gradient(circle at 62% 42%, rgba(0,0,0,.72) 0 6%, transparent 7.5%), radial-gradient(circle at 34% 28%, var(--bt-hi) 0, var(--bt) 46%, var(--bt-lo) 100%);
+  box-shadow: inset -2px -3px 6px rgba(0,0,0,.35), 0 1px 3px rgba(0,0,0,.45); }
+.ballico.lg { width: 52px; height: 52px; }
+.li-ic.ball { background: none; }
+.ball-head .ballico { width: 48px; height: 48px; }
+.ball-pick { display: flex; align-items: flex-start; gap: 12px; }
+.ball-pick .grow { min-width: 0; }
+.ball-pick-ic { margin-top: 30px; flex: none; }
+.ball-form .opt { font-size: 12px; opacity: .8; }
+.ng-more { margin-top: 6px; border-top: 1px solid var(--line); }
+.ng-more > summary { list-style: none; display: flex; align-items: center; gap: 10px; padding: 12px 2px 8px; cursor: pointer; }
+.ng-more > summary::-webkit-details-marker { display: none; }
+.ng-more-main { flex: 1; min-width: 0; display: block; }
+.ng-more-t { display: block; font-weight: 700; }
+.ng-more-t .opt { font-weight: 500; font-size: 13px; color: var(--muted); }
+.ng-more-s { display: block; font-size: 14px; color: var(--text); margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ng-more-s.none { color: var(--muted); }
+.ng-more[open] .ng-more-s { display: none; }
+.ng-more > summary .chev { display: flex; color: var(--muted); transition: transform .15s; }
+.ng-more[open] > summary .chev { transform: rotate(90deg); }
+.ng-more > summary .chev .ic { width: 18px; height: 18px; }
+.ng-more-body { padding-top: 2px; }
+
+/* v0.8: photo of the lane screen — "Copy scan details" under the scan tools */
+.scan-tools { display: flex; flex-direction: column; align-items: flex-start; gap: 0; margin: 6px 0 0; }
+.scan-tools .link-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 0 2px; }
+.scan-tools .link-btn .ic { width: 16px; height: 16px; }
+.scan-tools .small { line-height: 1.35; }

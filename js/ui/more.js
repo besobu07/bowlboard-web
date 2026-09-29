@@ -3,9 +3,9 @@
 (function () {
 'use strict';
 const BB = window.BB;
-const Store = window.BBStore, Data = window.BBData, LG = window.BBLeague, Sample = window.BBSample, S = window.BBScore;
+const Store = window.BBStore, LG = window.BBLeague, Sample = window.BBSample, S = window.BBScore;
 const { RENDER, ACT, EMBED, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ask, openSheet, closeSheet, screenRoot, rerender, backLink, avgFloor, plural, download, backupStatus, backupNow, scoredGames } = BB;
-const VERSION = '0.7.1';
+const VERSION = '0.8.0';
 
 const item = (ic, t, s, attrs) => '<button class="list-item nav-item" ' + attrs + '><span class="li-ic">' + icon(ic) + '</span><div class="grow"><div class="t">' + t + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div><span class="chev" aria-hidden="true">' + icon('chevron') + '</span></button>';
 
@@ -19,6 +19,8 @@ RENDER.more = function () {
     item('place', 'Bowling centers', st.centers.length + ' saved', 'data-act="go" data-to="centers"');
   h += '<h3 class="group-title">Data</h3>' +
     item('shield', 'Backup &amp; restore', esc(bs.label) + ' · ' + plural(st.games.length, 'game') + ', ' + plural(st.leagues.length, 'league'), 'data-act="go" data-to="backup"' + (bs.due ? ' data-due="1"' : '')) +
+    item('upload', 'Import my scores', 'From a CSV or Excel file: date and score per row', 'id="moreImportScores"') +
+    item('download', 'Export my games', 'Excel, CSV or a printable PDF report', 'id="moreExport"') +
     item('upload', 'Import a league', 'From a LeagueSecretary or BLS weekly-scores file', 'id="moreImport"') +
     (Sample.has(Store) ? '' : item('sparkle', 'Load sample data', 'Example games and a demo league, labelled and removable', 'id="loadSamples"'));
   h += '<h3 class="group-title">App</h3>' +
@@ -27,10 +29,12 @@ RENDER.more = function () {
     '<input type="checkbox" class="switch" id="setHaptics"' + (prof.haptics === false ? '' : ' checked') + '></label>' +
     installItemHTML();
   h += item('mail', 'Contact us', 'Questions, ideas or a problem? hello@bowlboard.app', 'id="contactUs"');
-  h += '<div class="about"><img src="primary-logo.png" alt="BowlBoard"><p class="tagline">Built for Bowlers</p><p class="small muted">BowlBoard ' + VERSION + ' · <a href="https://bowlboard.app" target="_blank" rel="noopener">bowlboard.app</a> · your data stays on this device</p></div>';
+  h += '<div class="about"><img class="about-icon" src="app-icon.png" alt=""><img class="about-wordmark" src="wordmark.png" alt="BowlBoard"><p class="tagline">Built for Bowlers</p><p class="small muted">BowlBoard ' + VERSION + ' · <a href="https://bowlboard.app" target="_blank" rel="noopener">bowlboard.app</a> · your data stays on this device</p></div>';
   screenRoot().innerHTML = h;
   on('installApp', 'click', installFlow);
   on('contactUs', 'click', () => { const u = 'mailto:hello@bowlboard.app?subject=' + encodeURIComponent('BowlBoard ' + VERSION); if (EMBED) BB.copyText('hello@bowlboard.app').then(ok => toast(ok ? 'Email address copied: hello@bowlboard.app' : 'Email us at hello@bowlboard.app', 4000)); else window.location.href = u; });
+  on('moreImportScores', 'click', () => BB.importScoresSheet());
+  on('moreExport', 'click', () => BB.exportSheet());
   on('moreImport', 'click', () => { show('league', { list: true }); setTimeout(() => BB.importLeagueSheet && BB.importLeagueSheet(), 0); });
   on('loadSamples', 'click', () => {
     try { Sample.seed(Store, S, LG, todayISO()); toast('Sample data loaded — clear it from Home anytime'); show('home'); }
@@ -75,39 +79,19 @@ RENDER.balls = function () {
   h += Store.state.balls.length ? Store.state.balls.map(b => {
     const gs = scoredGames(Store.state.games.filter(g => g.ballId === b.id));
     const used = Store.state.games.some(g => g.ballId === b.id);
-    return '<div class="list-item"><button class="ball-open" data-act="openBall" data-id="' + b.id + '"><span class="li-ic">' + icon('ball') + '</span><div class="grow"><div class="t">' + esc(b.brand + ' ' + b.name) + (b.sample ? ' <span class="seed-tag">sample</span>' : '') + '</div>' +
+    return '<div class="list-item"><button class="ball-open" data-act="openBall" data-id="' + b.id + '"><span class="li-ic ball">' + BB.ballIcon(b.brand) + '</span><div class="grow"><div class="t">' + esc(b.brand + ' ' + b.name) + (b.sample ? ' <span class="seed-tag">sample</span>' : '') + '</div>' +
       '<div class="s">' + esc([b.weight ? b.weight + ' lb' : null, b.cover].filter(Boolean).join(' · ')) +
       (gs.length ? ' · ' + plural(gs.length, 'game') + ' · avg ' + avgFloor(gs.map(g => g.total)) : '') + '</div></div></button>' +
       (!used ? '<button class="btn danger" data-act="delBall" data-id="' + b.id + '" aria-label="Remove ' + esc(b.name) + '">✕</button>' : '') + '</div>';
   }).join('') : '<div class="empty">No balls yet — add your arsenal below.</div>';
-  const groups = {};
-  Data.BALL_CATALOG.forEach((b, i) => { (groups[b.brand] = groups[b.brand] || []).push([i, b]); });
-  h += '<div class="card"><h3>Add a ball</h3>' +
-    '<label class="field">From catalog<select id="baCat">' +
-    Object.keys(groups).sort().map(br => '<optgroup label="' + esc(br) + '">' +
-      groups[br].map(([i, b]) => '<option value="' + i + '">' + esc(b.name + ' · ' + b.cover) + '</option>').join('') + '</optgroup>').join('') +
-    '<option value="custom">Custom ball…</option></select></label>' +
-    '<div id="baCustomWrap" hidden><label class="field">Brand<input type="text" id="baBrand" placeholder="e.g. Storm"></label>' +
-    '<label class="field">Ball name<input type="text" id="baName" placeholder="e.g. Hy-Road"></label>' +
-    '<label class="field">Coverstock<input type="text" id="baCover" placeholder="e.g. Hybrid Reactive"></label></div>' +
-    '<label class="field">Weight (lb)<select id="baWeight">' +
-    [16, 15, 14, 13, 12, 11, 10, 9, 8, 7, 6].map(w => '<option value="' + w + '"' + (w === 15 ? ' selected' : '') + '>' + w + '</option>').join('') +
-    '</select></label><button class="btn" id="baAdd">Add to arsenal</button></div>';
-  screenRoot().innerHTML = h;
-  on('baCat', 'change', e => { el('baCustomWrap').hidden = e.target.value !== 'custom'; });
+  h += '<div class="card"><h3>Add a ball</h3>' + BB.ballFormHTML('ba') + '<button class="btn mt8" id="baAdd">Add to arsenal</button></div>';
+  const root = screenRoot();
+  root.innerHTML = h;
+  BB.bindBallForm(root, 'ba');
   on('baAdd', 'click', () => {
-    const ci = val('baCat');
-    const weight = +val('baWeight');
-    let ball;
-    if (ci === 'custom') {
-      const name = val('baName').trim();
-      if (!name) { toast('Give the ball a name'); return; }
-      ball = { brand: val('baBrand').trim() || 'Custom', name, cover: val('baCover').trim(), weight, custom: true };
-    } else {
-      const c = Data.BALL_CATALOG[+ci];
-      ball = { brand: c.brand, name: c.name, cover: c.cover, weight, custom: false };
-    }
-    Store.addBall(ball);
+    const r = BB.readBallForm(root, 'ba');
+    if (r.error) { toast(r.error); return; }
+    Store.addBall(r.ball);
     toast('Ball added'); RENDER.balls();
   });
 };

@@ -18,6 +18,14 @@ const scoredGames = games => games.filter(g => g.total != null);
 /* ---------- my games = my own log + league-sheet scores that aren't linked to it ---------- */
 function sheetGames() { return Store.state.leagues.reduce((all, l) => all.concat(LG.sheetOnlyGames(l)), []); }
 function myGames() { return Store.state.games.concat(sheetGames()); }
+// The games to count for exports and achievements: your log plus your league-file scores, finished ones only.
+// Sample games are left out once you have real ones (and used only when they're all there is, so the screens work).
+function gamePool() {
+  const all = scoredGames(myGames());
+  const demo = g => g.sample || (g.leagueId && (Store.getLeague(g.leagueId) || {}).sample);
+  const real = all.filter(g => !demo(g));
+  return { games: real.length ? real : all, sample: !real.length && all.length > 0 };
+}
 function getAnyGame(id) {
   if (!String(id).startsWith('sheet:')) return Store.getGame(id);
   return sheetGames().find(g => g.id === id) || null;
@@ -77,12 +85,32 @@ function pendingNote(game) {
 }
 
 /* ---------- pickers ---------- */
-function centerOptions(sel, withNew) {
-  return Store.state.centers.map(a => '<option value="' + a.id + '"' + (a.id === sel ? ' selected' : '') + '>' + esc(a.name + (a.city ? ' — ' + a.city : '')) + '</option>').join('') +
+// withNone adds a "No center" choice first (a game doesn't need one); withNew adds "+ Add a new center…" last.
+function centerOptions(sel, withNew, withNone) {
+  return (withNone ? '<option value=""' + (!sel ? ' selected' : '') + '>No center</option>' : '') +
+    Store.state.centers.map(a => '<option value="' + a.id + '"' + (a.id === sel ? ' selected' : '') + '>' + esc(a.name + (a.city ? ' — ' + a.city : '')) + '</option>').join('') +
     (withNew ? '<option value="__new"' + (sel === '__new' ? ' selected' : '') + '>+ Add a new center…</option>' : '');
 }
-function ballOptions(sel) {
-  return '<option value="">House ball / none</option>' + Store.state.balls.map(b => '<option value="' + b.id + '"' + (b.id === sel ? ' selected' : '') + '>' + esc(b.brand + ' ' + b.name + (b.weight ? ' · ' + b.weight + ' lb' : '')) + '</option>').join('');
+// The center's name, or '' when a game has none (or it was removed), so screens can leave the gap out.
+function centerLabel(id) { const n = id && id !== '__new' ? Store.centerName(id) : ''; return n === '—' ? '' : n; }
+function ballOptions(sel, withAdd) {
+  return '<option value="">House ball / none</option>' + Store.state.balls.map(b => '<option value="' + b.id + '"' + (b.id === sel ? ' selected' : '') + '>' + esc(b.brand + ' ' + b.name + (b.weight ? ' · ' + b.weight + ' lb' : '')) + '</option>').join('') +
+    (withAdd ? '<option value="__add">+ Add a ball…</option>' : '');
+}
+// A generic bowling ball, tinted by brand so a bag of balls is easy to tell apart until there are photos.
+// The tint comes from the brand's name, so a brand always gets the same colour.
+function ballTint(brand) {
+  const b = String(brand || '').trim().toLowerCase();
+  if (!b || b === 'custom') return { hue: null };
+  let h = 0;
+  for (let i = 0; i < b.length; i++) h = (h * 31 + b.charCodeAt(i)) >>> 0;
+  return { hue: (h % 12) * 30 };
+}
+function ballIcon(brand, cls) {
+  const t = ballTint(brand);
+  const st = t.hue == null ? '--bt:hsl(0 0% 42%);--bt-hi:hsl(0 0% 66%);--bt-lo:hsl(0 0% 16%)'
+    : '--bt:hsl(' + t.hue + ' 62% 46%);--bt-hi:hsl(' + t.hue + ' 72% 70%);--bt-lo:hsl(' + t.hue + ' 60% 20%)';
+  return '<span class="ballico' + (cls ? ' ' + cls : '') + '" style="' + st + '" aria-hidden="true"></span>';
 }
 function leagueOptions(sel) {
   return '<option value="">Practice / open play</option>' + Store.state.leagues.map(l => '<option value="' + l.id + '"' + (l.id === sel ? ' selected' : '') + '>' + esc(l.name) + '</option>').join('');
@@ -187,8 +215,8 @@ function backupNow() {
 }
 
 Object.assign(BB, {
-  MODE_LABEL, laneLabel, leagueName, scoredGames, sheetGames, myGames, getAnyGame, myLeagues, firstName,
-  cardHTML, scorecardHTML, frameGridHTML: scorecardHTML, pendingNote, centerOptions, ballOptions, leagueOptions, patternList,
+  MODE_LABEL, laneLabel, leagueName, scoredGames, sheetGames, myGames, gamePool, getAnyGame, myLeagues, firstName,
+  cardHTML, scorecardHTML, frameGridHTML: scorecardHTML, pendingNote, centerOptions, centerLabel, ballOptions, ballIcon, ballTint, leagueOptions, patternList,
   lanesFields, readLanes, bindLanes, seriesLinked, seriesCardHTML, highSeries, realData, backupStatus, backupNow, plural,
 });
 })();

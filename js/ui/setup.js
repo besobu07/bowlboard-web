@@ -20,7 +20,7 @@ function defaultSetup() {
   const lastMode = last && last.mode !== 'photo' && MODE_LABEL[last.mode] ? last.mode : 'pins';
   return {
     date: todayISO(),
-    centerId: last ? last.centerId : (Store.state.centers[0] || {}).id || '__new',
+    centerId: last ? (last.centerId || '') : (Store.state.centers[0] || {}).id || '__new',
     ballId: last ? last.ballId || '' : '',
     lanes: [], pattern: last ? last.pattern || '' : '',
     leagueId: '', mode: lastMode, seriesId: null, gameNo: 1,
@@ -59,14 +59,23 @@ function leagueWeekHint(leagueId, date) {
   return '<div class="small muted hint">Week ' + w + (m ? ' · ' + esc(LG.teamName(l, m.a)) + ' vs ' + esc(LG.teamName(l, m.b)) + ' · lanes ' + esc(m.lanes) : '') + '.</div>' +
     '<div class="link-hint">' + icon('link') + '<span>When you finish, send the series to the league sheet. It’s entered once and stays linked: fix a game here and the sheet follows.</span></div>';
 }
+// One line for the Details row: what will be saved with the game. Empty when nothing is set.
+function detailsLine(s, cont) {
+  const center = cont ? '' : s.centerId === '__new' ? (s.newCenterName || '').trim() : BB.centerLabel(s.centerId);
+  const ball = s.ballId && Store.state.balls.some(b => b.id === s.ballId) ? Store.ballLabel(s.ballId).replace(/ \([\d.]+ lb\)$/, '') : '';
+  return [center, BB.laneLabel({ lanes: s.lanes || [] }), ball, s.pattern].filter(Boolean).join(' · ');
+}
+const DETAILS_HINT = cont => (cont ? 'Add lane, ball or oil pattern' : 'Add center, lane, ball or oil pattern');
+
 RENDER.new = function () {
   if (!newSetup) newSetup = defaultSetup();
   const s = newSetup;
   const cont = !!s.seriesId;
   if (!Store.state.centers.length) s.centerId = '__new';
+  const centerName = BB.centerLabel(s.centerId);
   let h = '<h2 class="screen-title">' + (cont ? 'Game ' + s.gameNo + ' of your series' : 'How are you scoring?') + '</h2>';
   if (cont) {
-    h += '<div class="card info-card"><b>' + fmtDate(s.date) + ' · ' + esc(Store.centerName(s.centerId)) + '</b>' +
+    h += '<div class="card info-card"><b>' + fmtDate(s.date) + (centerName ? ' · ' + esc(centerName) : '') + '</b>' +
       (s.leagueId ? '<div class="small muted">' + esc(leagueName(s.leagueId)) + '</div>' : '') +
       '<button class="link-btn" id="ngFresh">Start a separate series instead</button></div>';
   }
@@ -84,25 +93,43 @@ RENDER.new = function () {
   h += '<h2 class="screen-title">' + (cont ? 'This game' : 'Where and what') + '</h2><div class="card">';
   if (!cont) {
     h += '<label class="field">Date<input type="date" id="ngDate" value="' + esc(s.date) + '"></label>';
-    h += '<label class="field">Bowling center<select id="ngCenter">' + centerOptions(s.centerId, true) + '</select></label>';
+    h += '<label class="field">Type<select id="ngLeague">' + leagueOptions(s.leagueId) + '</select></label><div id="ngWeek">' + (s.leagueId ? leagueWeekHint(s.leagueId, s.date) : '') + '</div>';
+  }
+  // Center, lane, ball and oil pattern are all optional, so they sit behind one row that says what's remembered.
+  const line = detailsLine(s, cont);
+  h += '<details class="ng-more" id="ngMore"' + (s.moreOpen ? ' open' : '') + '><summary><span class="ng-more-main"><span class="ng-more-t">Details <span class="opt">(optional)</span></span>' +
+    '<span class="ng-more-s' + (line ? '' : ' none') + '" id="ngSum">' + esc(line || DETAILS_HINT(cont)) + '</span></span><span class="chev" aria-hidden="true">' + icon('chevron') + '</span></summary><div class="ng-more-body">';
+  if (!cont) {
+    h += '<label class="field">Bowling center<select id="ngCenter">' + centerOptions(s.centerId, true, true) + '</select></label>';
     h += '<div id="ngNewCenter"' + (s.centerId === '__new' ? '' : ' hidden') + ' class="new-center"><div class="small muted">Add this house — it’s saved for next time.</div>' +
       '<div class="grid2"><label class="field">Center name<input type="text" id="ngCName" placeholder="e.g. Parkside Lanes" value="' + esc(s.newCenterName || '') + '"></label>' +
       '<label class="field">City<input type="text" id="ngCCity" placeholder="optional" value="' + esc(s.newCenterCity || '') + '"></label></div></div>';
   }
   h += lanesFields('ngLane', s.lanes, !!s.leagueId);
   h += '<label class="field">Oil pattern<input type="text" id="ngPattern" list="patternList" placeholder="House shot" value="' + esc(s.pattern) + '"></label>' + patternList();
-  h += '<label class="field">Ball for game ' + s.gameNo + '<select id="ngBall">' + ballOptions(s.ballId) + '</select></label>';
-  if (!cont) h += '<label class="field">Type<select id="ngLeague">' + leagueOptions(s.leagueId) + '</select></label><div id="ngWeek">' + (s.leagueId ? leagueWeekHint(s.leagueId, s.date) : '') + '</div>';
+  h += '<label class="field">Ball for game ' + s.gameNo + '<select id="ngBall">' + ballOptions(s.ballId, true) + '</select></label>';
+  h += '</div></details>';
   h += '</div>';
   h += '<button class="btn" id="ngStart">Start game ' + s.gameNo + ' →</button>';
   screenRoot().innerHTML = h;
+  const sum = () => {
+    const box = el('ngSum'), text = detailsLine(s, cont);
+    if (!box) return;
+    box.textContent = text || DETAILS_HINT(cont);
+    box.classList.toggle('none', !text);
+  };
+  on('ngMore', 'toggle', e => { s.moreOpen = e.target.open; });
   on('ngDate', 'change', e => { s.date = e.target.value; const w = el('ngWeek'); if (w) w.innerHTML = s.leagueId ? leagueWeekHint(s.leagueId, s.date) : ''; });
-  on('ngCenter', 'change', e => { s.centerId = e.target.value; el('ngNewCenter').hidden = s.centerId !== '__new'; if (s.centerId === '__new') el('ngCName').focus(); });
-  on('ngCName', 'input', e => { s.newCenterName = e.target.value; });
+  on('ngCenter', 'change', e => { s.centerId = e.target.value; el('ngNewCenter').hidden = s.centerId !== '__new'; if (s.centerId === '__new') el('ngCName').focus(); sum(); });
+  on('ngCName', 'input', e => { s.newCenterName = e.target.value; sum(); });
   on('ngCCity', 'input', e => { s.newCenterCity = e.target.value; });
-  on('ngBall', 'change', e => { s.ballId = e.target.value; });
-  bindLanes('ngLane', l => { s.lanes = l; });
-  on('ngPattern', 'input', e => { s.pattern = e.target.value.trim(); });
+  on('ngBall', 'change', e => {
+    if (e.target.value !== '__add') { s.ballId = e.target.value; sum(); return; }
+    // "+ Add a ball…": pick it in the sheet, then it's the ball for this game; closing the sheet keeps what was there
+    BB.addBallSheet(b => { s.ballId = b.id; s.moreOpen = true; RENDER.new(); }, () => { const sel = el('ngBall'); if (sel) sel.value = s.ballId; });
+  });
+  bindLanes('ngLane', l => { s.lanes = l; sum(); });
+  on('ngPattern', 'input', e => { s.pattern = e.target.value.trim(); sum(); });
   on('ngLeague', 'change', e => {
     s.leagueId = e.target.value;
     const l = Store.getLeague(s.leagueId);
@@ -112,10 +139,9 @@ RENDER.new = function () {
   on('ngFresh', 'click', () => { newSetup = Object.assign(defaultSetup(), { mode: s.mode }); RENDER.new(); });
   on('ngStart', 'click', () => {
     if (!s.date) { toast('Pick a date'); return; }
-    if (s.centerId === '__new' || !s.centerId) {
+    if (s.centerId === '__new') {
       const name = (s.newCenterName || '').trim();
-      if (!name) { toast('Name the bowling center'); const n = el('ngCName'); if (n) n.focus(); return; }
-      s.centerId = Store.addCenter(name, (s.newCenterCity || '').trim()).id;
+      s.centerId = name ? Store.addCenter(name, (s.newCenterCity || '').trim()).id : '';   // no name typed: no center, and that's fine
     }
     s.lanes = readLanes('ngLane');
     startGame(Object.assign({}, s));
@@ -160,7 +186,7 @@ function sendSeriesSheet(seriesId, leagueId, after) {
   const G = l.gamesPerNight;
   const weekOpts = Array.from({ length: l.seasonWeeks }, (_, i) => i + 1).map(w => '<option value="' + w + '"' + (w === guess ? ' selected' : '') + '>Week ' + w + (LG.weekDate(l, w) ? ' · ' + fmtDate(LG.weekDate(l, w), { month: 'short', day: 'numeric' }) : '') + '</option>').join('');
   openSheet('<h3>Send to ' + esc(l.name) + '</h3>' +
-    '<p class="small muted mt0">Puts your games on the league score sheet as <b>' + esc(LG.me(l).name) + '</b>, linked to your log. If you edit a game later, the sheet follows. If the secretary changes a score on the sheet, theirs stands.</p>' +
+    '<p class="small muted mt0">Puts your games on the league score sheet as <b>' + esc(LG.me(l).name) + '</b>, linked to your log. If you edit a game later, the sheet follows. When you later update the league from its file, the file’s scores replace these (games that still match stay linked).</p>' +
     '<label class="field">League week<select id="sendWeek">' + weekOpts + '</select></label>' +
     '<div class="send-preview" id="sendPreview"></div>' +
     (games.length > G ? '<p class="small warn">This league bowls ' + G + ' games a night — games 1–' + G + ' are sent.</p>' : '') +
@@ -202,6 +228,7 @@ RENDER.saved = function (p) {
       '<div class="muted small">Series ' + tot + ' · ' + sr.length + ' games</div>';
   }
   h += '</div>';
+  h += BB.achSavedHTML ? BB.achSavedHTML(g) : '';
   const l = g.leagueId && Store.getLeague(g.leagueId);
   if (l) {
     const linked = sr.filter(x => LG.findLink(l, x.id)).length;
@@ -210,8 +237,10 @@ RENDER.saved = function (p) {
       ((linked < Math.min(sr.length, l.gamesPerNight)) ? '<button class="btn secondary mt8" id="sendLeague">' + icon('link') + 'Send series to league sheet</button>' : '') + '</div>';
   }
   h += '<button class="btn" id="nextGameBtn">Bowl game ' + (sr.length + 1) + ' →</button>';
+  if (g.total != null) h += '<button class="btn secondary mt8" id="shareGameBtn">' + icon('share') + (sr.length > 1 ? 'Share tonight’s series' : 'Share this game') + '</button>';
   h += '<div class="row mt8"><button class="btn secondary grow" id="viewGameBtn">View game</button><button class="btn secondary grow" id="doneBtn">Done for today</button></div>';
   screenRoot().innerHTML = h;
+  on('shareGameBtn', 'click', () => (sr.length > 1 ? BB.shareCard('night', { seriesId: g.seriesId, gameId: g.id }) : BB.shareCard('game', { id: g.id })));
   on('sendLeague', 'click', () => sendSeriesSheet(g.seriesId, g.leagueId));
   on('nextGameBtn', 'click', () => continueSeries(g));
   on('viewGameBtn', 'click', () => show('game', { id: g.id }));

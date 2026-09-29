@@ -17,12 +17,7 @@ function nightCard(l, today) {
   if (!fw) return '';
   const soon = fw.when === 'tonight' || (fw.when === 'next' && fw.date && fw.date <= addDays(today, 6));
   const mm = LG.me(l) ? LG.myMatchup(l, fw.week) : null;
-  if (!mm) {
-    // Secretary view: a league night today with nobody marked as you.
-    if (fw.when !== 'tonight' || l.sample) return '';
-    return '<div class="card night"><div class="kicker">' + icon('calendar') + 'Tonight · week ' + fw.week + '</div><div class="night-title">' + esc(l.name) + '</div>' +
-      '<button class="btn secondary mt8" data-act="league" data-id="' + l.id + '" data-tab="scores" data-week="' + fw.week + '">Enter week ' + fw.week + ' scores</button></div>';
-  }
+  if (!mm) return ''; // Home only speaks up about leagues you've said you bowl in
   if (!soon && fw.when !== 'last') return '';
   const kicker = fw.when === 'tonight' ? 'Tonight · week ' + fw.week : fw.when === 'next' ? fmtDate(fw.date, { weekday: 'short', month: 'short', day: 'numeric' }) + ' · week ' + fw.week : 'Week ' + fw.week + ' result';
   let h = '<div class="card night' + (fw.when === 'tonight' ? ' tonight' : '') + '"><div class="kicker">' + icon(fw.when === 'last' ? 'league' : 'calendar') + esc(kicker) + '</div>';
@@ -74,11 +69,11 @@ RENDER.home = function () {
       '<button class="btn" data-act="go" data-to="backup">Restore my data</button><button class="btn secondary mt8" id="recoverFresh">Start fresh instead</button></div>';
   }
   if (!st.games.length && !st.leagues.length) {
-    h += '<div class="card welcome"><img class="welcome-logo" src="primary-logo.png" alt="BowlBoard">' +
+    h += '<div class="card welcome"><img class="welcome-icon" src="app-icon.png" alt=""><img class="welcome-logo" src="wordmark.png" alt="BowlBoard">' +
       '<div class="tagline">Built for Bowlers</div>' +
       '<p class="muted">Log every game — pin by pin, from a photo of the lane screen, or just the score. BowlBoard keeps your average, stats and league standings.</p>' +
       '<button class="btn" id="homeNew">' + icon('pin') + 'Bowl a game</button>' +
-      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'Set up or import a league</button>' +
+      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'In a league? Import your scores</button>' +
       (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Look around with sample data</button>') + '</div>';
     root.innerHTML = h;
     bind(null);
@@ -93,7 +88,7 @@ RENDER.home = function () {
   const latest = own[0];
   const cont = latest && latest.date === today && latest.games.length < 6;
   h += '<div class="bowl-card" data-act="bowlCard">' +
-    '<img class="bc-mark" src="logo-mark.png" alt="">' +
+    '<img class="bc-mark" src="app-icon.png" alt="">' +
     '<div class="bc-body"><div class="bc-title">BOWL</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
     '</div>' +
     '<button class="bc-go" id="' + (cont ? 'homeContinue' : 'homeNew') + '" type="button" aria-label="' + (cont ? 'Continue tonight’s series' : 'Bowl: start a new game') + '">' + icon('arrow') + '</button>' +
@@ -103,7 +98,7 @@ RENDER.home = function () {
 
   // League: tonight right under Bowl; otherwise quietly further down
   const leagues = myLeagues();
-  const cards = leagues.slice(0, 2).map(l => nightCard(l, today)).concat(st.leagues.filter(l => !LG.me(l)).map(l => nightCard(l, today))).filter(Boolean);
+  const cards = leagues.slice(0, 2).map(l => nightCard(l, today)).filter(Boolean);
   const tonight = cards.filter(c => / tonight/.test(c.slice(0, 40)));
   const later = cards.filter(c => tonight.indexOf(c) < 0);
   h += tonight.join('');

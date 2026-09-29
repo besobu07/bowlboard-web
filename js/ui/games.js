@@ -33,7 +33,7 @@ const rangeOptions = sel => RANGES.map(o => '<option value="' + o[0] + '"' + (se
 const histFilter = { preset: 'all', center: '', ball: '', type: '' };
 RENDER.history = function () {
   const root = screenRoot();
-  let h = '<h2 class="screen-title">History</h2><div class="filters">';
+  let h = '<div class="head-row"><h2 class="screen-title">History</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '</div><div class="filters">';
   h += '<select id="hfPreset" aria-label="Date range">' + rangeOptions(histFilter.preset) + '</select>';
   h += '<select id="hfType" aria-label="Practice or league">' + typeOptions(histFilter.type) + '</select>';
   h += '<select id="hfCenter" aria-label="Center"><option value="">All centers</option>' +
@@ -45,13 +45,15 @@ RENDER.history = function () {
     (!histFilter.center || g.centerId === histFilter.center) &&
     (!histFilter.ball || (!g.sheet && (histFilter.ball === '__house' ? !g.ballId : g.ballId === histFilter.ball))));
   const series = Store.allSeries(games);
-  h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.') + '</div>';
+  h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.<br><button class="btn small-btn secondary mt8" id="hfImport">' + icon('upload') + 'Import scores from a file</button>') + '</div>';
   h += '</div>';
   root.innerHTML = h;
   on('hfPreset', 'change', e => { histFilter.preset = e.target.value; RENDER.history(); });
   on('hfType', 'change', e => { histFilter.type = e.target.value; RENDER.history(); });
   on('hfCenter', 'change', e => { histFilter.center = e.target.value; RENDER.history(); });
   on('hfBall', 'change', e => { histFilter.ball = e.target.value; RENDER.history(); });
+  on('hfImport', 'click', () => BB.importScoresSheet());
+  on('hfExport', 'click', () => BB.exportSheet());
 };
 
 /* ---------- game detail + edit ---------- */
@@ -85,7 +87,7 @@ RENDER.game = function (p) {
   h += BB.linkStatusHTML(g);
   if (g.photoId || g.thumb) h += '<img class="photo-preview small" id="gamePhoto" alt="lane screen photo"' + (g.thumb && Store.safeImage(g.thumb) ? ' src="' + Store.safeImage(g.thumb) + '"' : ' hidden') + '>';
   h += '<div class="card"><table class="kv">' +
-    '<tr><td>Center</td><td>' + esc(Store.centerName(g.centerId)) + '</td></tr>' +
+    (BB.centerLabel(g.centerId) ? '<tr><td>Center</td><td>' + esc(BB.centerLabel(g.centerId)) + '</td></tr>' : '') +
     (laneLabel(g) ? '<tr><td>Lanes</td><td>' + esc(laneLabel(g).replace(/^Lanes? /, '')) + '</td></tr>' : '') +
     (g.pattern ? '<tr><td>Oil pattern</td><td>' + esc(g.pattern) + '</td></tr>' : '') +
     '<tr><td>Ball</td><td>' + (g.ballId && Store.state.balls.some(b => b.id === g.ballId) ? '<button class="link-btn inline" data-act="ball" data-id="' + esc(g.ballId) + '">' + esc(Store.ballLabel(g.ballId)) + ' ›</button>' : esc(Store.ballLabel(g.ballId))) + '</td></tr>' +
@@ -93,10 +95,12 @@ RENDER.game = function (p) {
     '<tr><td>Entered as</td><td>' + (MODE_LABEL[g.mode] || g.mode) + (g.updatedAt ? ' · edited' : '') + '</td></tr></table></div>';
   const l = g.leagueId && Store.getLeague(g.leagueId);
   if (l && !LG.findLink(l, g.id)) h += '<button class="btn secondary mb8" id="sendLeague2">' + icon('link') + 'Send series to ' + esc(l.name) + ' sheet</button>';
+  if (g.total != null) h += '<button class="btn secondary mb8" id="shareGame">' + icon('share') + 'Share this game</button>';
   h += '<div class="row"><button class="btn secondary grow" id="editDetailsBtn">Edit details</button><button class="btn secondary grow" id="editScoreBtn">Edit score</button></div>';
   h += '<div class="row mt8"><button class="btn secondary grow" id="addGameBtn">+ Add game to series</button><button class="btn danger" id="delGameBtn">Delete</button></div>';
   root.innerHTML = h;
   if (g.photoId) Store.photos.get(g.photoId).then(src => { const im = el('gamePhoto'); if (im && src && BB.nav.params.id === g.id) { im.src = src; im.hidden = false; } });
+  on('shareGame', 'click', () => BB.shareCard('game', { id: g.id }));
   on('sendLeague2', 'click', () => BB.sendSeriesSheet(g.seriesId, g.leagueId));
   on('editDetailsBtn', 'click', () => editDetailsSheet(g));
   on('editScoreBtn', 'click', () => editScore(g));
@@ -110,7 +114,7 @@ RENDER.game = function (p) {
     show(rest.length ? 'game' : 'history', rest.length ? { id: rest[0].id } : undefined);
   });
 };
-// League-sheet game (entered by the secretary, not in your log): read-only here.
+// League-sheet game (it came from the league's file, not your log): read-only here.
 function renderSheetGame(root, g) {
   const l = Store.getLeague(g.leagueId);
   const all = sheetGames().filter(x => x.seriesId === g.seriesId);
@@ -126,7 +130,7 @@ function editDetailsSheet(g) {
   const multi = Store.seriesGames(g.seriesId).length > 1;
   openSheet('<h3>Edit details</h3>' +
     '<label class="field">Date<input type="date" id="edDate" value="' + esc(g.date) + '"></label>' +
-    '<label class="field">Bowling center<select id="edCenter">' + centerOptions(g.centerId) + '</select></label>' +
+    '<label class="field">Bowling center<select id="edCenter">' + centerOptions(g.centerId, false, true) + '</select></label>' +
     lanesFields('edLane', g.lanes) +
     '<label class="field">Oil pattern<input type="text" id="edPattern" list="patternList" value="' + esc(g.pattern || '') + '"></label>' + patternList() +
     '<label class="field">Ball (this game)<select id="edBall">' + ballOptions(g.ballId) + '</select></label>' +

@@ -105,7 +105,9 @@
     const xf = (text.match(/[XxF]/g) || []).length;
     const multi = runs.filter(r => r.length >= 2).length;
     if (multi >= 4 && xf <= 1) {
-      const nums = repairTotals(runs);
+      let nums = repairTotals(runs);
+      // a screen shows the final total again beside the frames ("134  134"): the running totals are the first ten
+      if (nums && nums.length > 10 && nums.slice(10).every(v => v >= nums[9])) nums = nums.slice(0, 10);
       if (nums && upShare(nums) >= 0.8) return { kind: 'totals', nums };
     }
     const nums = runs.map(Number);
@@ -132,19 +134,23 @@
       const fit = T && T.length === 10 ? fitToTotals(D, T) : null;
       const filled = D.balls.reduce((a, b) => a + b.filter(v => v !== '').length, 0);
       const bad = D.flags.filter(f => f === 'bad').length;
-      const score = fit && fit.cost <= FIT_MAX ? 100 - fit.cost * 5 : filled - 2 * bad;
-      if (!best || score > best.score) best = { score, syms: c.syms, totals: T || [] };
+      // A row whose marks fit the totals scores by how many frames the two agree on, less how far the fit had to move:
+      // counting only the disagreement would favour a row where hardly any marks were read.
+      const agree = fit ? fit.draft.balls.filter((b, i) => D.balls[i].length && JSON.stringify(b) === JSON.stringify(D.balls[i])).length : 0;
+      const score = fit && fit.cost <= FIT_MAX ? 50 + agree * 6 - fit.cost * 3 : filled - 2 * bad;
+      if (!best || score > best.score) best = { score, syms: c.syms, totals: T || [], k };
     });
+    const kinds = cls.map(c => c.kind);
     if (!best) {
       const t = cls.find(c => c.kind === 'totals');
-      return { syms: [], totals: t ? t.nums : [] };
+      return { syms: [], totals: t ? t.nums : [], kinds, chosen: -1 };
     }
-    return { syms: best.syms, totals: best.totals };
+    return { syms: best.syms, totals: best.totals, kinds, chosen: best.k };
   }
 
   // Running totals are usually read more reliably than X and / marks. When all ten are
   // there, find the game that fits them and agrees best with the marks that were read.
-  const FIT_MAX = 4; // more disagreement than this and the totals were probably misread
+  const FIT_MAX = 8; // more disagreement than this between the marks and the totals and a row isn't chosen for its fit
   function fitToTotals(D, cum) {
     if (!Array.isArray(cum) || cum.length !== 10) return null;
     const f = cum.map((c, i) => c - (i ? cum[i - 1] : 0));
@@ -234,7 +240,9 @@
   // frames that changed marked to check.
   function read(lines) {
     const p = parseLines(lines);
-    let draft = draftFromSyms(p.syms), fitted = false, confirmed = false;
+    let draft = draftFromSyms(p.syms), fitted = false, confirmed = false, fit = null;
+    const marksRead = draft.balls.map((b, i) => marks(draft, i));   // what the marks alone said, before the totals decided
+    const ballsRead = draft.balls.map(b => b.slice());
     if (p.totals.length === 10) {
       const c = check(draft);
       const cum = c.ok && c.complete ? S.computeScore(c.game).cumulative : null;
@@ -242,11 +250,13 @@
         draft.flags = draft.flags.map(() => 'good');
         confirmed = true;
       } else {
-        const fit = fitToTotals(draft, p.totals);
+        fit = fitToTotals(draft, p.totals);
         if (fit) { draft = fit.draft; fitted = true; }
       }
     }
-    return { draft, totals: p.totals, fitted, confirmed, marks: p.syms.length };
+    const changed = fitted ? draft.balls.map((b, i) => (JSON.stringify(b) === JSON.stringify(ballsRead[i]) ? -1 : i)).filter(i => i >= 0) : [];
+    return { draft, totals: p.totals, fitted, confirmed, marks: p.syms.length,
+      detail: { kinds: p.kinds, chosen: p.chosen, marksRead, changed, cost: fit ? fit.cost : null, unique: fit ? fit.unique : null } };
   }
   const parseText = text => parseLines(String(text || '').split(/\r?\n/));
 
@@ -408,7 +418,55 @@
     });
   }
 
-  const Scan = { CONF_LOW, CONF_DROP, emptyDraft, fromFrames, linesFromOCR, tokens, classify, repairTotals, parseLines, parseText, fitToTotals, read, readText: text => read(String(text || '').split(/\r?\n/)), rackInfo, frameDone, draftFromSyms, check, keysFor, enter, nextBox, strike, clearFrame, erase, marks };
+  /* ---------- an account of one scan, to paste into an email when a reading goes wrong ---------- */
+  // o: { version, when, photo: { w, h, crop, procW, procH, ms }, raw, lines: [text], detail (from read), totals,
+  //      fitted, confirmed, draft (as it is now), checked, error }. Words only: no photo goes in it.
+  // Several reading passes over one photo (different image sizes or layout modes): their lines are read together, with
+  // blank lines between the passes so a row is never stitched across two of them. `first` is where each pass starts.
+  function combinePasses(passes) {
+    const lines = [], first = [];
+    passes.forEach((ls, i) => { if (i) lines.push({ text: '', confs: null }, { text: '', confs: null }); first.push(lines.length); lines.push(...ls); });
+    return { lines, first };
+  }
+
+  function report(o) {
+    o = o || {};
+    const pct = v => Math.round(v * 100) + '%';
+    const frameText = (d, i) => { const m = marks(d, i); return m.length ? m.map(x => (x === '' ? '?' : x)).join('') : '·'; };
+    const row = d => Array.from({ length: 10 }, (_, i) => frameText(d, i)).join(' | ');
+    const L = ['BowlBoard scan details', [o.version ? 'Version ' + o.version : '', o.when || ''].filter(Boolean).join(' · ')];
+    const ph = o.photo;
+    if (ph) L.push('Photo: ' + [ph.w && ph.h ? ph.w + '×' + ph.h : '', ph.crop ? 'box x ' + pct(ph.crop.x) + ', y ' + pct(ph.crop.y) + ', w ' + pct(ph.crop.w) + ', h ' + pct(ph.crop.h) : 'whole photo',
+      ph.procW ? 'cleaned crop ' + ph.procW + '×' + ph.procH : '', ph.ms != null ? 'read in ' + (ph.ms / 1000).toFixed(1) + ' s' : ''].filter(Boolean).join(' · '));
+    if (o.error) L.push('Problem: ' + o.error);
+    const d = o.detail;
+    if (d) {
+      const n = (o.totals || []).length;
+      L.push('Result: ' + (o.confirmed ? 'the marks and the running totals agree frame by frame'
+        : o.fitted ? 'frames fitted to the running totals' + (d.changed.length ? ' (changed: ' + d.changed.map(i => i + 1).join(', ') + ')' : '') + (d.unique ? '; only one game fits these totals' : '; more than one game fits, the closest to the marks was used')
+        : n === 10 ? 'the ten running totals it read fit no game, so they were probably misread; marks only'
+        : 'marks only (running totals ' + (n ? 'partly read: ' + n + ' of 10' : 'not read') + ')'));
+      if (o.lines && o.lines.length) {
+        const multi = (o.passes || []).length > 1, at = {}, real = multi ? o.lines.filter(t => t !== '').length : o.lines.length;
+        (o.passes || []).forEach(p => { at[p.first] = p.label; });
+        L.push('Lines it saw (' + real + (multi ? ', in ' + o.passes.length + ' reading passes' : '') + '):');
+        let num = 0;
+        o.lines.forEach((t, i) => {
+          if (at[i] != null) L.push('  — ' + at[i] + ' —');
+          if (t === '' && multi) return;   // the blank lines that keep the passes apart
+          L.push('  ' + String(++num).padStart(String(real).length) + '  ' + String(d.kinds[i] || 'other').padEnd(12) + (i === d.chosen ? '← used  ' : '        ') + JSON.stringify(t));
+        });
+      }
+      L.push('Marks it read: ' + (d.marksRead ? Array.from({ length: 10 }, (_, i) => { const m = d.marksRead[i] || []; return m.length ? m.map(x => (x === '' ? '?' : x)).join('') : '·'; }).join(' | ') : 'none'));
+      L.push('Running totals it read: ' + ((o.totals || []).length ? o.totals.join(' ') : 'none'));
+    }
+    if (o.draft) L.push('On screen now: ' + row(o.draft) + (o.total != null ? ' = ' + o.total : '') + (o.checked != null ? '; frames checked: ' + (o.checked ? 'yes' : 'no') : ''));
+    if (o.raw != null) L.push('', 'Raw text:', String(o.raw).replace(/\s+$/, ''));
+    L.push('', 'No photo is included in this report.');
+    return L.join('\n');
+  }
+
+  const Scan = { report, CONF_LOW, CONF_DROP, emptyDraft, fromFrames, linesFromOCR, combinePasses, tokens, classify, repairTotals, parseLines, parseText, fitToTotals, read, readText: text => read(String(text || '').split(/\r?\n/)), rackInfo, frameDone, draftFromSyms, check, keysFor, enter, nextBox, strike, clearFrame, erase, marks };
   if (typeof module !== 'undefined' && module.exports) module.exports = Scan;
   else global.BBScan = Scan;
 })(typeof window !== 'undefined' ? window : globalThis);

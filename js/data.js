@@ -35,5 +35,31 @@
     'PBA Cheetah', 'PBA Chameleon', 'PBA Scorpion', 'PBA Shark', 'PBA Viper', 'PBA Bear', 'PBA Wolf', 'PBA Badger',
   ];
 
-  global.BBData = { CENTERS, BALL_CATALOG, OIL_PATTERNS };
+  // The balls offered when someone adds one: the starter catalog above, plus the whole USBC Approved Ball List
+  // (js/ball-list.js, made by tools/make_ball_list.py: { source, updated, brands: { Brand: [names] } }) when that
+  // file is loaded. Brands and balls come back A–Z; the same ball listed twice shows once.
+  const byText = (a, b) => a.localeCompare(b, 'en', { sensitivity: 'base', numeric: true });
+  let memo = null;
+  function ballBook() {
+    const src = global.BBBallList || null;
+    if (memo && memo.src === src) return memo.book;
+    const book = new Map();   // lower-case brand -> { brand, balls: Map(lower-case name -> { name, cover }) }
+    const put = (brand, name, cover) => {
+      brand = String(brand || '').trim(); name = String(name || '').trim();
+      if (!brand || !name) return;
+      const k = brand.toLowerCase();
+      if (!book.has(k)) book.set(k, { brand, balls: new Map() });
+      const balls = book.get(k).balls, n = name.toLowerCase();
+      if (!balls.has(n)) balls.set(n, { name, cover: cover || '' });
+    };
+    BALL_CATALOG.forEach(b => put(b.brand, b.name, b.cover));
+    if (src && src.brands) Object.keys(src.brands).forEach(br => (src.brands[br] || []).forEach(n => put(br, n, '')));
+    memo = { src, book };
+    return book;
+  }
+  const ballBrands = () => Array.from(ballBook().values()).map(v => v.brand).sort(byText);
+  const ballsOf = brand => { const v = ballBook().get(String(brand || '').trim().toLowerCase()); return v ? Array.from(v.balls.values()).sort((a, b) => byText(a.name, b.name)) : []; };
+  const ballListInfo = () => { const l = global.BBBallList; return l ? { source: l.source || '', updated: l.updated || '' } : null; };
+
+  global.BBData = { CENTERS, BALL_CATALOG, OIL_PATTERNS, ballBrands, ballsOf, ballListInfo };
 })(typeof window !== 'undefined' ? window : globalThis);

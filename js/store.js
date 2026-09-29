@@ -350,6 +350,23 @@
       if (!g.seriesId) { g.seriesId = g.id; g.gameNo = 1; }
       state.games.unshift(g); syncLinks(); save(); return g;
     },
+    // Bring in a batch (an import from a file). They go to the back of the list so the game you
+    // logged last stays first: New game starts from it (center, ball, how you were scoring).
+    addGames(list) {
+      list.forEach(g => { g.id = g.id || uid(); g.createdAt = g.createdAt || new Date().toISOString(); if (!g.seriesId) { g.seriesId = g.id; g.gameNo = 1; } });
+      state.games.push.apply(state.games, list);
+      syncLinks(); save(); return list.length;
+    },
+    // Take an import back: its games, and any centers it created that nothing else uses.
+    undoImport(batch) {
+      if (!batch) return { games: 0, centers: 0 };
+      const gone = state.games.filter(g => g.imported === batch);
+      state.games = state.games.filter(g => g.imported !== batch);
+      let centers = 0;
+      state.centers.filter(c => c.importBatch === batch).forEach(c => { if (Store.deleteCenter(c.id)) centers++; });
+      syncLinks(); save();
+      return { games: gone.length, centers };
+    },
     updateGame(id, patch) {
       const g = byId(state.games, id);
       if (!g) return null;

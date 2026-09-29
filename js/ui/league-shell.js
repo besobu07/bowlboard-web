@@ -1,32 +1,29 @@
-/* BowlBoard — League: the list of leagues, creating one, and each league's home.
- * A league opens on the bowler's view (this week, scores, standings, schedule,
- * recap); rosters, rules, imports and exports live under Admin. */
+/* BowlBoard — League: the list of leagues and each league's home (bowler's view).
+ * A league opens on this week's matchup with Standings, Scores and Schedule below.
+ * Everything here is read-only; league data comes from importing a weekly-scores file
+ * (LeagueSecretary / BLS) and from games the bowler logs themselves.
+ * The secretary tools (teams, rules, score entry, recaps) are archived in admin-archive/. */
 (function () {
 'use strict';
 const BB = window.BB;
 const LG = window.BBLeague, Store = window.BBStore;
-const { RENDER, esc, icon, on, val, show, toast, ask, openSheet, closeSheet, screenRoot, todayISO, fmtDate, plural, backupNow } = BB;
+const { RENDER, esc, icon, on, show, toast, ask, openSheet, closeSheet, todayISO, fmtDate, plural, backupNow } = BB;
 const $ = s => document.querySelector(s);
 
-const lv = { id: null, tab: 'scores', week: null, admin: 'bowlers', editSchedule: false }; // remembered league view
-const TABS = [['scores', 'Scores'], ['standings', 'Standings'], ['schedule', 'Schedule'], ['recap', 'Recap'], ['admin', 'Admin']];
+const lv = { id: null, tab: 'standings', week: null }; // remembered league view
+const TABS = [['standings', 'Standings'], ['scores', 'Scores'], ['schedule', 'Schedule']];
 const fmtD = iso => LG.fmtDate(iso);
 const intOr = (v, d) => { const n = parseInt(v, 10); return isNaN(n) ? d : n; };
 const slug = s => String(s).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'league';
 // Every league change goes through here, so the app knows league night happened.
 function save(l) { Store.markLeagueEdit(l && l.teams ? l : Store.getLeague(lv.id)); Store.save(); }
 
-// Rebuild matchups for weeks that haven't been bowled; bowled weeks keep theirs, and
-// every week keeps its date (new weeks follow on a week apart).
-function regenSchedule(l) { LG.rebuildSchedule(l); }
-
 /* ---------- entry point ---------- */
 RENDER.league = function (p) {
   p = p || {};
   if (p.list) lv.id = null;
-  if (p.id) { if (p.id !== lv.id) { lv.week = null; lv.editSchedule = false; } lv.id = p.id; }
-  if (p.tab) lv.tab = p.tab === 'bowlers' || p.tab === 'settings' ? 'admin' : p.tab;
-  if (p.tab === 'bowlers' || p.tab === 'settings') lv.admin = p.tab;
+  if (p.id) { if (p.id !== lv.id) lv.week = null; lv.id = p.id; }
+  if (p.tab) lv.tab = TABS.some(t => t[0] === p.tab) ? p.tab : 'standings'; // older links (admin, recap...) land on Standings
   if (p.week) lv.week = p.week;
   const l = lv.id && Store.getLeague(lv.id);
   if (!l) { lv.id = null; return renderList(); }
@@ -39,11 +36,12 @@ RENDER.league = function (p) {
 function renderList() {
   const root = $('#screen-league');
   const ls = Store.state.leagues;
-  let h = '<h2 class="screen-title">Leagues</h2>';
+  let h = '<h2 class="screen-title">League</h2>';
   if (!ls.length) {
-    h += '<div class="card intro">' + icon('league', 'intro-ic') + '<h3>Your league, in one place</h3>' +
-      '<p class="small muted">Bowl in a league? See your matchup, standings and averages. Running one? Rosters, weekly scores, handicaps and standings are figured automatically, and a recap is ready to email in one tap.</p>' +
-      '<button class="btn" id="lgCreate">Create a league</button><button class="btn secondary mt8" id="lgImport">' + icon('upload') + 'Import a league from a file</button><button class="btn secondary mt8" id="lgDemo">Try it with a demo league</button></div>';
+    h += '<div class="card intro">' + icon('league', 'intro-ic') + '<h3>No league yet</h3>' +
+      '<p class="small muted">Bowl in a league? Import your league’s weekly scores (an Excel or CSV export from LeagueSecretary or BLS) to see standings, your matchup and everyone’s averages. Nothing to set up.</p>' +
+      '<button class="btn" id="lgImport">' + icon('upload') + 'Import league scores</button><button class="btn secondary mt8" id="lgDemo">Try it with a demo league</button></div>' +
+      '<p class="small muted center">Not in a league? Everything else in BowlBoard works without one.</p>';
   } else {
     h += ls.map(l => {
       const last = LG.lastScoredWeek(l);
@@ -52,12 +50,11 @@ function renderList() {
         '<div class="s">' + esc([Store.centerName(l.centerId) === '—' ? '' : Store.centerName(l.centerId), l.day + 's ' + l.time].filter(Boolean).join(' · ')) + '</div>' +
         '<div class="s">' + plural(l.teams.length, 'team') + ' · ' + (last ? 'week ' + last + ' of ' + l.seasonWeeks + ' bowled' : 'season not started') + (me ? ' · you: ' + esc(me.name) : '') + '</div></div><span class="chev">' + icon('chevron') + '</span></button>';
     }).join('');
-    h += '<button class="btn mt8" id="lgCreate">+ Create a league</button><button class="btn secondary mt8" id="lgImport">' + icon('upload') + 'Import a league from a file</button>';
+    h += '<button class="btn secondary mt8" id="lgImport">' + icon('upload') + 'Import or update from a file</button>';
     if (!ls.some(l => /\(demo\)/.test(l.name))) h += '<button class="btn secondary mt8" id="lgDemo">Load a demo league</button>';
   }
   root.innerHTML = h;
   root.querySelectorAll('[data-lg]').forEach(b => b.addEventListener('click', () => show('league', { id: b.dataset.lg })));
-  on('lgCreate', 'click', createSheet);
   on('lgImport', 'click', () => BB.importLeagueSheet());
   on('lgDemo', 'click', () => {
     const l = LG.buildDemoLeague({ today: todayISO(), centerId: (Store.state.centers[0] || {}).id || '' });
@@ -66,25 +63,6 @@ function renderList() {
     Store.addLeague(l);
     toast('Demo league loaded — 6 teams, 4 weeks bowled');
     show('league', { id: l.id, tab: 'standings', week: LG.lastScoredWeek(l) });
-  });
-}
-
-function createSheet() {
-  const l = LG.createLeague({ startDate: todayISO(), centerId: (Store.state.centers[0] || {}).id || '' });
-  openSheet('<h3>New league</h3>' + BB.leagueFormHTML(l, false) + '<button class="btn" id="lfCreate">Create league</button>', sh => {
-    const btn = sh.querySelector('#lfCreate');
-    btn.addEventListener('click', () => {
-      if (btn.disabled) return;
-      const err = BB.readLeagueForm(l, false);
-      if (err) { toast(err); return; }
-      btn.disabled = true; // one tap, one league
-      l.day = l.startDate ? LG.DAYS[new Date(l.startDate + 'T12:00:00').getDay()] : l.day;
-      Store.addLeague(l);
-      save(l);
-      closeSheet();
-      toast('League created — now add teams and bowlers');
-      show('league', { id: l.id, tab: 'bowlers' });
-    });
   });
 }
 
@@ -111,6 +89,27 @@ function thisWeekCard(l) {
   }
   return h + '</div>';
 }
+
+// Small footer on every league: who you are, refresh from a file, remove it.
+function optionsCard(l) {
+  const me = LG.me(l);
+  return '<div class="card league-options"><h3>' + esc(l.name) + '</h3>' +
+    '<div class="small muted mb8">' + (me ? 'You’re ' + esc(me.name) + '.' : 'You haven’t picked which bowler you are.') + '</div>' +
+    '<div class="row wrap"><button class="btn secondary small-btn" id="lgWho">' + (me ? 'Change my name' : 'Pick my name') + '</button>' +
+    '<button class="btn secondary small-btn" id="lgUpdate">' + icon('upload') + 'Update from a file</button>' +
+    '<button class="btn secondary small-btn" id="lgPoints">League points</button></div>' +
+    '<button class="link-btn danger-link" id="lgRemove">Remove this league from this phone</button></div>';
+}
+async function removeLeague(l) {
+  if (!(await ask('Remove ' + l.name + ' from this phone? Your own games stay in History. An automatic copy is kept first.', 'Remove league', true))) return;
+  const can = await Store.snapshots.available();
+  const copy = await Store.snapshots.take('before-league-delete', { force: true });
+  if (can && !copy) { toast('Couldn’t keep a copy first, so nothing was removed. Try again.', 4000); return; }
+  Store.deleteLeague(l.id); lv.id = null;
+  toast(copy ? 'League removed — an automatic copy was kept' : 'League removed');
+  show('league', { list: true });
+}
+
 function renderLeague(l) {
   const root = $('#screen-league');
   const last = LG.lastScoredWeek(l);
@@ -118,15 +117,19 @@ function renderLeague(l) {
   h += '<div class="league-head"><h2 class="screen-title">' + esc(l.name) + '</h2><div class="small muted">' +
     esc([Store.centerName(l.centerId) === '—' ? '' : Store.centerName(l.centerId), l.day + 's ' + l.time, plural(l.teams.length, 'team'), last ? 'week ' + last + ' of ' + l.seasonWeeks + ' bowled' : 'season not started'].filter(Boolean).join(' · ')) + '</div></div>';
   if (l.teams.length >= 2) h += thisWeekCard(l);
-  h += '<div class="seg" role="tablist">' + TABS.map(t => '<button role="tab" aria-selected="' + (lv.tab === t[0]) + '" class="' + (lv.tab === t[0] ? 'on' : '') + (t[0] === 'admin' ? ' admin-tab' : '') + '" data-tab="' + t[0] + '"' + (t[0] === 'admin' ? ' title="Admin: teams, rules, imports"' : '') + '>' + (t[0] === 'admin' ? icon('gear') + '<span class="sr">' + t[1] + '</span>' : t[1]) + '</button>').join('') + '</div>';
-  h += '<div id="lgBody"></div>';
+  h += '<div class="seg" role="tablist">' + TABS.map(t => '<button role="tab" aria-selected="' + (lv.tab === t[0]) + '" class="' + (lv.tab === t[0] ? 'on' : '') + '" data-tab="' + t[0] + '">' + t[1] + '</button>').join('') + '</div>';
+  h += '<div id="lgBody"></div>' + optionsCard(l);
   root.innerHTML = h;
   root.querySelectorAll('[data-tab]').forEach(b => b.addEventListener('click', () => { lv.tab = b.dataset.tab; renderLeague(l); }));
   root.querySelectorAll('[data-go-week]').forEach(b => b.addEventListener('click', () => show('matchup', { id: l.id, week: +b.dataset.goWeek, mi: +b.dataset.goMi })));
   on('twMe', 'click', () => BB.askMe(l));
+  on('lgWho', 'click', () => BB.askMe(l));
+  on('lgUpdate', 'click', () => BB.importLeagueSheet());
+  on('lgPoints', 'click', () => BB.pointsSheet(l));
+  on('lgRemove', 'click', () => removeLeague(l));
   const body = root.querySelector('#lgBody');
   const T = BB.LT;
-  ({ scores: T.scores, standings: T.standings, recap: T.recap, schedule: T.schedule, admin: T.admin }[lv.tab] || T.scores)(l, body);
+  ({ scores: T.scores, standings: T.standings, schedule: T.schedule }[lv.tab] || T.standings)(l, body);
   if (!l.askedMe && !LG.me(l) && l.bowlers.length >= 2) setTimeout(() => BB.askMe(l), 50);
 }
 
@@ -143,8 +146,8 @@ function bindWeekPicker(l) {
 }
 function needTeams(l, body) {
   if (l.teams.length >= 2) return false;
-  body.innerHTML = '<div class="empty">Add at least two teams to get a schedule going.<br><button class="btn small-btn mt8" id="goBowlers">Add teams &amp; bowlers</button></div>';
-  on('goBowlers', 'click', () => { lv.tab = 'admin'; lv.admin = 'bowlers'; renderLeague(l); });
+  body.innerHTML = '<div class="empty">This league has no teams yet.<br>Import a weekly scores file to fill it in.<br><button class="btn small-btn mt8" id="goImport">Import a file</button></div>';
+  on('goImport', 'click', () => BB.importLeagueSheet());
   return true;
 }
 
@@ -169,5 +172,5 @@ BB.onLeave((from, to) => {
 });
 
 BB.LT = {}; // league tabs, filled in by the league files that follow
-BB.L = { lv, TABS, fmtD, intOr, slug, save, regenSchedule, renderLeague, renderList, weekPicker, bindWeekPicker, needTeams };
+BB.L = { lv, TABS, fmtD, intOr, slug, save, renderLeague, renderList, weekPicker, bindWeekPicker, needTeams };
 })();

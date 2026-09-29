@@ -5,6 +5,8 @@
  *      black and white) and read for marks only: X / - F and single digits
  *   4. marks are placed by bowling rules (js/scan.js); anything impossible or unclear
  *      is flagged, and you check every frame on the tap-a-frame keypad before saving.
+ * When a scan won't do, you can type the running totals from the photo instead (frames are filled in only when
+ * the totals fit exactly one game), and "Copy scan details" gives a plain-text account of what the reader saw.
  * Scoring from paper sheets isn't a goal; screens are. */
 (function () {
 'use strict';
@@ -12,10 +14,10 @@ const BB = window.BB;
 const S = window.BBScore, Store = window.BBStore, Scan = window.BBScan;
 const { RENDER, EMBED, esc, icon, on, el, toast, screenRoot, frameEditor } = BB;
 
-const photo = { setup: null, img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false };
+const photo = { setup: null, img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null };
 function resetPhoto(setup) {
   photo.setup = setup || photo.setup;
-  Object.assign(photo, { img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false });
+  Object.assign(photo, { img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null });
 }
 function loadImage(src) {
   return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = reject; im.src = src; });
@@ -117,6 +119,104 @@ function gridLines(ink, W, H, thin) {
   }
   return erase;
 }
+// Screens drawn as a table have thick borders in a photo, as thick as the digits, so they can't be told from writing by
+// thickness. They are found from where the ink piles up instead: a row that is ink across much of the width, with a long
+// unbroken stretch, is a horizontal border; between those, a column that is ink for most of the band's height is a vertical
+// one. Whole stripes are rubbed out, so a border broken by glare goes too. Only done when several vertical borders are
+// found in a band, so plain text is never touched.
+function stripeRuns(n, ok, gap) {
+  const out = [];
+  let i = 0;
+  while (i < n) {
+    if (!ok(i)) { i++; continue; }
+    let last = i, j = i;
+    while (j < n && (ok(j) || j - last <= gap)) { if (ok(j)) last = j; j++; }
+    out.push([i, last + 1]); i = last + 1;
+  }
+  return out;
+}
+function gridStripes(ink, W, H, erase) {
+  const rowSum = new Uint32Array(H), rowRun = new Uint32Array(H);
+  for (let y = 0; y < H; y++) {
+    let s = 0, run = 0, best = 0;
+    for (let x = 0, o = y * W; x < W; x++) { if (ink[o + x]) { s++; run++; if (run > best) best = run; } else run = 0; }
+    rowSum[y] = s; rowRun[y] = best;
+  }
+  const hl = stripeRuns(H, y => rowSum[y] >= W * 0.45 && rowRun[y] >= W * 0.08, 2).filter(r => r[1] - r[0] >= 2 && r[1] - r[0] <= Math.max(6, H * 0.2));
+  const m = 2;
+  hl.forEach(r => { for (let y = Math.max(0, r[0] - m); y < Math.min(H, r[1] + m); y++) erase.fill(1, y * W, (y + 1) * W); });
+  const edges = [0]; hl.forEach(r => edges.push(r[0], r[1])); edges.push(H);
+  let vertical = 0;
+  const bands = [];   // the stretches between borders: { y0, y1, cells } where cells = vertical borders found in it
+  for (let b = 0; b < edges.length; b += 2) {
+    const y0 = edges[b], y1 = edges[b + 1], h = y1 - y0;
+    if (h < Math.max(24, H * 0.08)) continue;
+    const colSum = new Uint32Array(W), colRun = new Uint32Array(W);
+    for (let x = 0; x < W; x++) {
+      let s = 0, run = 0, best = 0;
+      for (let y = y0; y < y1; y++) { if (ink[y * W + x]) { s++; run++; if (run > best) best = run; } else run = 0; }
+      colSum[x] = s; colRun[x] = best;
+    }
+    const vl = stripeRuns(W, x => colSum[x] >= h * 0.6 && colRun[x] >= h * 0.55, 2).filter(r => r[1] - r[0] >= 2 && r[1] - r[0] <= Math.max(6, W * 0.06));
+    bands.push({ y0, y1, cells: vl.length });
+    if (vl.length < 3) continue;
+    vertical += vl.length;
+    vl.forEach(r => { for (let y = y0; y < y1; y++) erase.fill(1, y * W + Math.max(0, r[0] - m), y * W + Math.min(W, r[1] + m)); });
+  }
+  // A box that took in one row of a table and pieces of the rows above and below it: keep the row. That is when one
+  // table row (wide, with its cell borders) is clearly the tallest stretch between borders, at least 1.6 times the next.
+  const tall = bands.slice().sort((a, b) => (b.y1 - b.y0) - (a.y1 - a.y0));
+  if (tall.length > 1) {
+    const main = tall[0], mh = main.y1 - main.y0;
+    if (main.cells >= 3 && W / mh >= 3 && mh >= 1.6 * (tall[1].y1 - tall[1].y0)) {
+      erase.fill(1, 0, main.y0 * W);
+      erase.fill(1, main.y1 * W, W * H);
+    }
+  }
+  return { horizontal: hl.length, vertical };
+}
+// What is left of the borders after they are rubbed out (slivers along the old edges) and specks of dust are not writing:
+// remove ink pieces that are only a few pixels wide however tall, or a few pixels tall however wide, or tiny. Pieces much
+// taller than the writing (the row's name and the big total at the side of a screen) go too, when there are only a few of
+// them: they throw the reader's idea of where the lines of text are, and they are not marks or running totals.
+function despeckle(ink, erase, W, H) {
+  const n = W * H, label = new Int32Array(n), stack = new Int32Array(n);
+  const thin = Math.max(3, Math.round(W / 400));
+  const comps = [];   // { x0, x1, y0, y1, count }
+  for (let k0 = 0; k0 < n; k0++) {
+    if (!ink[k0] || erase[k0] || label[k0]) continue;
+    const id = comps.length + 1;
+    let sp = 0, count = 0, x0 = W, x1 = 0, y0 = H, y1 = 0;
+    stack[sp++] = k0; label[k0] = id;
+    while (sp) {
+      const k = stack[--sp];
+      count++;
+      const x = k % W, y = (k - x) / W;
+      if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y;
+      for (let dy = -1; dy <= 1; dy++) {
+        const yy = y + dy; if (yy < 0 || yy >= H) continue;
+        for (let dx = -1; dx <= 1; dx++) {
+          const xx = x + dx; if (xx < 0 || xx >= W) continue;
+          const j = yy * W + xx;
+          if (ink[j] && !erase[j] && !label[j]) { label[j] = id; stack[sp++] = j; }
+        }
+      }
+    }
+    comps.push({ x0, x1, y0, y1, count });
+  }
+  const drop = new Uint8Array(comps.length + 1);
+  comps.forEach((c, i) => {
+    const w = c.x1 - c.x0 + 1, h = c.y1 - c.y0 + 1;
+    if ((w <= thin && h >= 10) || (h <= thin && w >= 10) || c.count < 14) drop[i + 1] = 1;
+  });
+  const left = comps.map((c, i) => ({ h: c.y1 - c.y0 + 1, i })).filter(c => !drop[c.i + 1] && c.h >= 10);
+  if (left.length >= 12) {
+    const hs = left.map(c => c.h).sort((a, b) => a - b), med = hs[Math.floor(hs.length / 2)];
+    const tall = left.filter(c => c.h > med * 1.7);
+    if (tall.length && tall.length <= left.length * 0.15) tall.forEach(c => { drop[c.i + 1] = 1; });
+  }
+  for (let k = 0; k < n; k++) if (label[k] && drop[label[k]]) erase[k] = 1;
+}
 async function prepare(src, crop) {
   const img = await loadImage(src);
   const c0 = crop || { x: 0, y: 0, w: 1, h: 1 };
@@ -148,17 +248,80 @@ async function prepare(src, crop) {
     g = greyOf(ctx, W, H);
     ink = inkOf(g, W, H, flip);
   }
-  const erase = gridLines(ink, W, H, Math.max(3, Math.round(4 * scale)));
+  // borders first (whole stripes), then what they leave behind (thin slivers along the old edges), then specks
+  const erase = new Uint8Array(W * H);
+  gridStripes(ink, W, H, erase);
+  const rest = new Uint8Array(W * H);
+  for (let k = 0; k < W * H; k++) rest[k] = ink[k] && !erase[k] ? 1 : 0;
+  const thinLines = gridLines(rest, W, H, Math.max(3, Math.round(4 * scale)));
+  for (let k = 0; k < W * H; k++) if (thinLines[k]) erase[k] = 1;
+  despeckle(ink, erase, W, H);
   const id = ctx.getImageData(0, 0, W, H), px = id.data;
   for (let k = 0, p = 0; k < W * H; k++, p += 4) { const v = ink[k] && !erase[k] ? 0 : 255; px[p] = px[p + 1] = px[p + 2] = v; px[p + 3] = 255; }
   ctx.putImageData(id, 0, 0);
   return c.toDataURL('image/png');
 }
 
+// The cleaned copy at a fraction of its size. The reader does better on digits about 30-40 px tall than on the big
+// 1600 px-wide copy, and it's faster too. The shrinking is done here (Lanczos, all in numbers) rather than by the
+// browser's canvas, whose smoothing differs between browsers and read noticeably worse. Returns a PNG data URL.
+function lanczosTaps(n, m) {
+  const r = n / m, sc = Math.max(1, r), a = 3 * sc, out = [];
+  const lz = x => { x = Math.abs(x); return x < 1e-9 ? 1 : x >= 3 ? 0 : 3 * Math.sin(Math.PI * x) * Math.sin(Math.PI * x / 3) / (Math.PI * Math.PI * x * x); };
+  for (let o = 0; o < m; o++) {
+    const c = (o + 0.5) * r - 0.5, i0 = Math.max(0, Math.ceil(c - a)), i1 = Math.min(n - 1, Math.floor(c + a)), w = [];
+    let sum = 0;
+    for (let i = i0; i <= i1; i++) { const v = lz((i - c) / sc); w.push(v); sum += v; }
+    for (let k = 0; k < w.length; k++) w[k] /= sum || 1;
+    out.push({ i0, w });
+  }
+  return out;
+}
+function shrinkGrey(g, W, H, w2, h2) {
+  const tx = lanczosTaps(W, w2), ty = lanczosTaps(H, h2);
+  const mid = new Float32Array(w2 * H);
+  for (let y = 0; y < H; y++) for (let x = 0; x < w2; x++) {
+    const t = tx[x]; let v = 0;
+    for (let k = 0; k < t.w.length; k++) v += g[y * W + t.i0 + k] * t.w[k];
+    mid[y * w2 + x] = v;
+  }
+  const out = new Uint8ClampedArray(w2 * h2);
+  for (let y = 0; y < h2; y++) for (let x = 0; x < w2; x++) {
+    const t = ty[y]; let v = 0;
+    for (let k = 0; k < t.w.length; k++) v += mid[(t.i0 + k) * w2 + x] * t.w[k];
+    out[y * w2 + x] = v;
+  }
+  return out;
+}
+async function scaled(dataURL, f) {
+  if (f === 1) return dataURL;
+  const im = await loadImage(dataURL);
+  const W = im.width, H = im.height, w2 = Math.max(8, Math.round(W * f)), h2 = Math.max(8, Math.round(H * f));
+  const c0 = document.createElement('canvas');
+  c0.width = W; c0.height = H;
+  const x0 = c0.getContext('2d');
+  x0.drawImage(im, 0, 0);
+  const px0 = x0.getImageData(0, 0, W, H).data, g = new Float32Array(W * H);
+  for (let k = 0; k < W * H; k++) g[k] = px0[k * 4];
+  const small = shrinkGrey(g, W, H, w2, h2);
+  const c = document.createElement('canvas');
+  c.width = w2; c.height = h2;
+  const ctx = c.getContext('2d'), id = ctx.createImageData(w2, h2);
+  for (let k = 0, p = 0; k < w2 * h2; k++, p += 4) { id.data[p] = id.data[p + 1] = id.data[p + 2] = small[k]; id.data[p + 3] = 255; }
+  ctx.putImageData(id, 0, 0);
+  return c.toDataURL('image/png');
+}
+// Reading passes, in order: the same cleaned copy at three sizes, since the reader's luck with a screen changes with
+// the size (measured on mock screens and a real one: about 11% more frames right than any single size). Each pass after
+// the first only runs when the marks and the running totals didn't already agree.
+const PASSES = [{ psm: '6', f: 0.6 }, { psm: '6', f: 0.5 }, { psm: '6', f: 0.4 }];
+const passLabel = p => 'layout ' + p.psm + ' at ' + Math.round(p.f * 100) + '%';
+
 RENDER.photo = function () {
   const root = screenRoot();
   if (!photo.setup) { BB.show('new'); return; }
   const su = photo.setup;
+  if (photo.view === 'totals') { renderTotals(root, su); return; }
   let h = BB.entryHeader(su, 'photo');
   h += '<div class="card">';
   if (!photo.img && photo.draft) {
@@ -180,8 +343,10 @@ RENDER.photo = function () {
       '<button class="btn secondary small-btn" id="cropBtn" aria-pressed="' + photo.cropping + '">' + icon('crop') + (photo.cropping ? 'Done' : photo.crop ? 'Re-box' : 'Box my row') + '</button>' +
       (photo.crop && !photo.cropping ? '<button class="btn secondary small-btn" id="cropClear">Whole photo</button>' : '') +
       (photo.draft ? '' : '<button class="btn secondary small-btn" id="manualBtn">Type it in</button>') +
+      '<button class="btn secondary small-btn" id="totalsBtn">Type the totals</button>' +
       '<button class="btn secondary small-btn" id="clearPhotoBtn">Retake</button></div>';
     if (photo.proc) h += '<details class="proc"><summary>What the scanner read</summary><img src="' + Store.safeImage(photo.proc) + '" alt="cleaned-up crop used for reading"><p class="small muted">If this looks like mush, retake the photo rather than fixing every frame.</p></details>';
+    if (photo.scan) h += '<div class="scan-tools"><button class="link-btn" id="copyScanBtn">' + icon('copy') + 'Copy scan details</button><span class="small muted">Email it to us if a scan goes wrong. It’s words only, no photo.</span></div>';
   }
   h += '<div class="scan-status" id="scanNote" aria-live="polite">' + esc(photo.note) + '</div>';
   if (photo.draft) {
@@ -212,6 +377,8 @@ RENDER.photo = function () {
   on('cropBtn', 'click', () => { photo.cropping = !photo.cropping; RENDER.photo(); });
   on('cropClear', 'click', () => { photo.crop = null; RENDER.photo(); });
   on('manualBtn', 'click', () => { photo.draft = photo.draft || Scan.emptyDraft(); photo.note = ''; RENDER.photo(); });
+  on('totalsBtn', 'click', () => { photo.view = 'totals'; RENDER.photo(); });
+  on('copyScanBtn', 'click', copyScan);
   on('clearPhotoBtn', 'click', () => { resetPhoto(); RENDER.photo(); });
   if (photo.cropping) bindCrop(el('cropWrap'));
   if (photo.draft) bindReview(root, su);
@@ -268,44 +435,111 @@ function bindReview(root, su) {
     const g = Object.assign(BB.gameBase(su), { mode: 'photo', frames: r.game.frames, total: r.total });
     const thumb = photo.thumb;
     resetPhoto();
-    if (thumb) {
-      Store.photos.put(g.id, thumb).then(ok => {
-        if (ok) Store.updateGame(g.id, { photoId: g.id });
-        else toast('The photo couldn’t be kept on this device — the score is saved.', 3500);
-      });
-    }
+    attachPhoto(g, thumb);
     BB.saveGame(g);
   });
   return ed;
 }
+function attachPhoto(g, thumb) {
+  if (!thumb) return;
+  Store.photos.put(g.id, thumb).then(ok => {
+    if (ok) Store.updateGame(g.id, { photoId: g.id });
+    else toast('The photo couldn’t be kept on this device — the score is saved.', 3500);
+  });
+}
+
+/* ---------- type the running totals from the photo ---------- */
+// The same panel as the Running totals way of scoring, with the photo above it to read from. Frames are only worked
+// out when the totals fit exactly one game; otherwise the game counts toward your average. If the scan managed to
+// read all ten totals they're filled in to check.
+function renderTotals(root, su) {
+  const prefilled = !photo.rt && photo.totals.length === 10;
+  if (!photo.rt) photo.rt = { cum: prefilled ? photo.totals.map(String) : new Array(10).fill('') };
+  const title = BB.entryHeader(su, 'photo') + '<div class="card"><button class="link-btn" id="ptBack">‹ Back to the photo</button>' +
+    (photo.img ? '<img class="photo-preview" src="' + Store.safeImage(photo.img) + '" alt="lane screen photo">' : '') +
+    (prefilled ? '<p class="small muted mb0">The scanner read these totals. Check each one against the screen.</p>' : '') + '</div>';
+  BB.renderRunningTotals(root, {
+    title, prefix: 'pt', target: photo.rt,
+    onSave: data => {
+      const g = Object.assign(BB.gameBase(su), data, { mode: 'frames' });
+      const thumb = photo.thumb;
+      resetPhoto();
+      attachPhoto(g, thumb);
+      BB.saveGame(g);
+    },
+  });
+  BB.bindEntryBall(su);
+  on('ptBack', 'click', () => { photo.view = ''; RENDER.photo(); });
+}
+
+/* ---------- copy scan details ---------- */
+function copyScan() {
+  const sc = photo.scan;
+  if (!sc) return;
+  const chk = photo.draft ? Scan.check(photo.draft) : null;
+  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, error: sc.error,
+    draft: photo.draft, total: chk && chk.ok && chk.complete ? chk.total : null, checked: photo.draft && photo.scanned ? photo.checked : null });
+  BB.copyText(text).then(ok => {
+    if (ok) toast('Copied. Paste it into an email to hello@bowlboard.app', 4500);
+    else BB.textSheet('scan-details.txt', text);
+  });
+}
 
 async function autoScan() {
   if (!photo.img) { toast('Add a photo first'); return; }
+  const t0 = Date.now();
+  const cropNow = () => (photo.crop ? Object.assign({}, photo.crop) : null);
+  const size = async () => { try { const im = await loadImage(photo.img); return { w: im.width, h: im.height, crop: cropNow() }; } catch (e) { return { crop: cropNow() }; } };
   if (typeof Tesseract === 'undefined' || !Tesseract.createWorker) {
-    photo.note = 'Reading the screen needs a connection the first time — type the frames in instead.';
+    // no reader: straight to typing it in, at once (the photo's size only matters for the copied details, so it follows)
+    photo.note = 'Reading the screen needs a connection the first time — type the frames or the totals in instead.';
     photo.draft = photo.draft || Scan.emptyDraft();
-    RENDER.photo(); return;
+    const sc = photo.scan = { photo: { crop: cropNow() }, error: 'The reading library isn’t loaded (no connection?), so nothing was read.' };
+    RENDER.photo();
+    size().then(info => { sc.photo = info; });
+    return;
   }
-  photo.scanning = true; photo.note = 'Reading the screen…'; RENDER.photo();
+  photo.scanning = true; photo.note = 'Reading the screen…'; photo.scan = null; RENDER.photo();
   let worker;
   try {
     photo.proc = await prepare(photo.img, photo.crop);
+    const info = await size();
+    try { const pim = await loadImage(photo.proc); info.procW = pim.width; info.procH = pim.height; } catch (e) { /* the cleaned copy is only for the report */ }
+    photo.scan = { photo: info };
     worker = await Tesseract.createWorker('eng');
-    await worker.setParameters({ tessedit_char_whitelist: 'Xx/-0123456789F ', tessedit_pageseg_mode: '6', preserve_interword_spaces: '1' });
-    const res = await worker.recognize(photo.proc);
-    const r = Scan.read(Scan.linesFromOCR(res.data));
+    const passes = [], raws = [];
+    let r = null, all = null;
+    for (let i = 0; i < PASSES.length; i++) {
+      const p = PASSES[i];
+      if (i) { photo.note = 'Checking the reading…'; RENDER.photo(); }
+      await worker.setParameters({ tessedit_char_whitelist: 'Xx/-0123456789F ', tessedit_pageseg_mode: p.psm, preserve_interword_spaces: '1' });
+      const res = await worker.recognize(await scaled(photo.proc, p.f));
+      passes.push(Scan.linesFromOCR(res.data));
+      raws.push(String((res.data && res.data.text) || ''));
+      all = Scan.combinePasses(passes);
+      r = Scan.read(all.lines);
+      if (r.confirmed) break;   // marks and totals agree: no need to read it again
+    }
+    const lines = all.lines;
+    info.ms = Date.now() - t0;
+    photo.scan = { photo: info, raw: raws.map((t, i) => (raws.length > 1 ? '— ' + passLabel(PASSES[i]) + ' —\n' : '') + t.replace(/\s+$/, '')).join('\n\n'), lines: lines.map(l => l.text),
+      passes: all.first.map((first, i) => ({ label: passLabel(PASSES[i]), first })), detail: r.detail, totals: r.totals, fitted: r.fitted, confirmed: r.confirmed };
     photo.draft = r.draft;
     photo.totals = r.totals.length === 10 ? r.totals : [];
+    if (photo.rt && photo.rt.cum.every(v => v === '')) photo.rt = null;   // nothing typed yet: let the totals it read fill the boxes
     photo.scanned = true;
     photo.checked = false;
     const filled = r.draft.balls.filter(b => b.length).length;
-    photo.note = !filled ? 'Couldn\u2019t find the frames. Try boxing just your row, or type it in.'
+    const wide = !photo.crop && !r.confirmed ? ' The whole screen is in the photo, so boxing just your row usually reads better.' : '';
+    photo.note = !filled ? 'Couldn\u2019t find the frames. Try boxing just your row, or type the frames or the totals in.'
       : r.confirmed ? 'Read the marks and the running totals, and they agree frame by frame.'
-      : r.fitted ? 'Read the running totals and fitted the frames to them. Check the amber frames against the screen.'
-      : 'Read ' + r.marks + ' marks. The running totals weren\u2019t readable, so check every frame.';
+      : r.fitted ? 'Read the running totals and fitted the frames to them' + (r.detail.unique ? ' (only one game fits them)' : '') + '. Check the amber frames against the screen.' + wide
+      : r.totals.length === 10 ? 'Read ' + r.marks + ' marks. The running totals it read don\u2019t fit any game, so they were probably misread. Check every frame, or type the totals in.' + wide
+      : 'Read ' + r.marks + ' marks. The running totals weren\u2019t readable, so check every frame.' + wide;
   } catch (e) {
-    photo.note = 'Couldn’t read it — type the frames in instead.';
+    photo.note = 'Couldn’t read it — type the frames or the totals in instead.';
     photo.draft = photo.draft || Scan.emptyDraft();
+    photo.scan = Object.assign(photo.scan || { photo: await size() }, { error: 'Reading stopped with: ' + String((e && e.message) || e) });
   } finally {
     if (worker) worker.terminate().catch(() => {});
   }
@@ -322,5 +556,5 @@ photo.setDraft = (balls, opts) => {
 };
 
 window.BBPhoto = photo;
-Object.assign(BB, { resetPhoto, preparePhoto: prepare });
+Object.assign(BB, { resetPhoto, preparePhoto: prepare, scalePhoto: scaled });
 })();

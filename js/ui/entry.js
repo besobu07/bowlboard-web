@@ -9,7 +9,8 @@ const S = window.BBScore, Store = window.BBStore;
 const { RENDER, ACT, esc, fmtDate, icon, el, on, show, toast, screenRoot, haptic, countUp, reduceMotion, ballOptions, scorecardHTML, pendingNote } = BB;
 
 function entryHeader(setup, extra) {
-  return '<h2 class="screen-title">Game ' + setup.gameNo + ' <span class="muted small">· ' + fmtDate(setup.date) + ' · ' + esc(Store.centerName(setup.centerId)) + (extra ? ' · ' + extra : '') + '</span></h2>' +
+  const center = BB.centerLabel(setup.centerId);
+  return '<h2 class="screen-title">Game ' + setup.gameNo + ' <span class="muted small">· ' + fmtDate(setup.date) + (center ? ' · ' + esc(center) : '') + (extra ? ' · ' + extra : '') + '</span></h2>' +
     '<label class="ball-line">' + icon('ball') + '<span>Ball</span><select id="entryBall" aria-label="Ball for this game">' + ballOptions(setup.ballId) + '</select></label>';
 }
 function bindEntryBall(setup) { on('entryBall', 'change', e => { setup.ballId = e.target.value; toast('Ball for game ' + setup.gameNo + ': ' + Store.ballLabel(setup.ballId)); }); }
