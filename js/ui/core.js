@@ -21,9 +21,11 @@ const P = d => '<path d="' + d + '"/>';
 const C = (x, y, r) => '<circle cx="' + x + '" cy="' + y + '" r="' + r + '"/>';
 const ICONS = {
   home: P('M3.5 11 12 4l8.5 7') + P('M5.5 9.5V20h4.5v-5.5h4V20h4.5V9.5'),
-  history: C(12, 12, 8.5) + P('M12 7.5V12l3 2'),
+  history: P('M9 3.5h6v3H9z') + P('M7.5 5H5.5v15.5h13V5h-2') + P('M8.5 11h7M8.5 14.5h7M8.5 18h4'),
   stats: P('M3.5 20h17') + P('M6.5 20v-7') + P('M12 20V6') + P('M17.5 20v-10'),
   league: P('M8 4h8v5.5a4 4 0 0 1-8 0z') + P('M8 6H5.2a2.8 2.8 0 0 0 3 4') + P('M16 6h2.8a2.8 2.8 0 0 1-3 4') + P('M12 13.5V17') + P('M8.5 20h7') + P('M10 17h4v3h-4z'),
+  pins: ['M5.5', 'M12', 'M18.5'].map((_, i) => '<g transform="translate(' + [-3.2, 3.8, 10.8][i] + ' ' + (i === 1 ? 1.2 : 3.2) + ') scale(.62)"><path d="M12 2.5c1.6 0 2.3 1.5 2 3-.2 1-.9 1.6-.9 2.6 0 1.4 2.9 3.2 2.9 7.3 0 3.4-1.7 6.1-4 6.1s-4-2.7-4-6.1c0-4.1 2.9-5.9 2.9-7.3 0-1-.7-1.6-.9-2.6-.3-1.5.4-3 2-3z"/></g>').join(''),
+  arrow: P('M5 12h14') + P('M13 6l6 6-6 6'),
   more: C(5.5, 12, 1.3) + C(12, 12, 1.3) + C(18.5, 12, 1.3),
   pin: P('M12 2.5c1.6 0 2.3 1.5 2 3-.2 1-.9 1.6-.9 2.6 0 1.4 2.9 3.2 2.9 7.3 0 3.4-1.7 6.1-4 6.1s-4-2.7-4-6.1c0-4.1 2.9-5.9 2.9-7.3 0-1-.7-1.6-.9-2.6-.3-1.5.4-3 2-3z') + P('M10.4 7.8h3.2'),
   camera: P('M4 7.5h3.2L9 5h6l1.8 2.5H20v11H4z') + C(12, 13, 3.3),
@@ -48,7 +50,7 @@ const ICONS = {
   undo: P('M9 14.5 4.5 10 9 5.5') + P('M4.5 10H14a5.5 5.5 0 0 1 0 11h-3'),
   calendar: P('M4 6h16v14H4z') + P('M4 10h16') + P('M8.5 3.5v4M15.5 3.5v4'),
   people: C(9, 8.5, 3.2) + P('M3 19.5c.8-3.2 3.1-5 6-5s5.2 1.8 6 5') + P('M15.5 5.6a3 3 0 0 1 0 5.8') + P('M17.4 14.8c1.8.6 3.1 2.2 3.6 4.7'),
-  gear: C(12, 12, 3) + P('M12 2.8v2.4M12 18.8v2.4M21.2 12h-2.4M5.2 12H2.8M18.5 5.5l-1.7 1.7M7.2 16.8l-1.7 1.7M18.5 18.5l-1.7-1.7M7.2 7.2 5.5 5.5'),
+  gear: P('M10.44 2.93 L13.56 2.93 L13.55 5.17 L15.73 6.08 L17.31 4.49 L19.51 6.69 L17.92 8.27 L18.83 10.45 L21.07 10.44 L21.07 13.56 L18.83 13.55 L17.92 15.73 L19.51 17.31 L17.31 19.51 L15.73 17.92 L13.55 18.83 L13.56 21.07 L10.44 21.07 L10.45 18.83 L8.27 17.92 L6.69 19.51 L4.49 17.31 L6.08 15.73 L5.17 13.55 L2.93 13.56 L2.93 10.44 L5.17 10.45 L6.08 8.27 L4.49 6.69 L6.69 4.49 L8.27 6.08 L10.45 5.17 Z') + C(12, 12, 3),
   clock: C(12, 12, 8.5) + P('M12 7.5V12h3.5'),
   crop: P('M7 3.5V17h13.5') + P('M3.5 7H17v13.5'),
   file: P('M6.5 3.5h7l4 4v13h-11z') + P('M13.5 3.5v4h4'),
@@ -257,6 +259,7 @@ function show(name, params) {
 const Store = () => window.BBStore;
 function rerender() { (RENDER[nav.current] || (() => {}))(nav.params); }
 document.querySelectorAll('.tabbar button').forEach(b => b.addEventListener('click', () => show(b.dataset.nav)));
+{ const g = document.getElementById('hdrGear'); if (g) { g.innerHTML = icon('gear'); g.addEventListener('click', () => show('more')); } }
 const backLink = (target, label, params) => '<button class="back-link" data-back="' + target + '"' + (params ? " data-back-params='" + esc(JSON.stringify(params)) + "'" : '') + '>‹ ' + esc(label) + '</button>';
 document.addEventListener('click', e => {
   const b = e.target.closest('[data-back]');

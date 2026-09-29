@@ -43,23 +43,42 @@ function nightCard(l, today) {
   return h + '</div>';
 }
 
+// A small trend line for the season card: the average as the season went, oldest to newest.
+function sparkline(games) {
+  const t = I.chrono(games).map(g => g.total).slice(-40);
+  if (t.length < 3) return '';
+  // running average: how the season average got to where it is
+  let sum = 0;
+  const pts = t.map((v, i) => { sum += v; return sum / (i + 1); }).slice(Math.min(2, t.length - 3));
+  const W = 200, H = 90, pad = 6;
+  const lo = Math.min.apply(null, pts), hi = Math.max.apply(null, pts), span = Math.max(8, hi - lo);
+  const xy = pts.map((v, i) => [pad + (W - 2 * pad) * i / (pts.length - 1), H - pad - (H - 2 * pad) * (v - lo) / span]);
+  const line = xy.map((p, i) => (i ? 'L' : 'M') + p[0].toFixed(1) + ' ' + p[1].toFixed(1)).join(' ');
+  const last = xy[xy.length - 1];
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" role="img" aria-label="Your average over the season, trending ' + (pts[pts.length - 1] >= pts[0] ? 'up' : 'down') + '">' +
+    '<defs><linearGradient id="sfill" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#F6A623" stop-opacity=".35"/><stop offset="1" stop-color="#F6A623" stop-opacity="0"/></linearGradient></defs>' +
+    '<path d="' + line + ' L' + last[0].toFixed(1) + ' ' + H + ' L' + xy[0][0].toFixed(1) + ' ' + H + ' Z" fill="url(#sfill)"/>' +
+    '<path d="' + line + '" fill="none" stroke="#E67E22" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>' +
+    '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4" fill="#E67E22"/></svg>';
+}
+
 RENDER.home = function () {
   const root = screenRoot();
   const today = todayISO();
   const mine = myGames();
   const st = Store.state;
-  let h = '';
+  let h = '<div class="home-backdrop" aria-hidden="true"><img src="lane.jpg" alt=""></div>';
   if (Store.recovery) {
     h += '<div class="card recover" role="alert"><h3>' + icon('alert') + 'We couldn’t read the data saved on this phone</h3>' +
       '<p class="small mt0">It hasn’t been deleted. BowlBoard set it aside' + (Store.recovery.kept ? '' : ' (and won’t save anything over it)') + '. Restore an automatic copy or a backup file to carry on where you left off.</p>' +
       '<button class="btn" data-act="go" data-to="backup">Restore my data</button><button class="btn secondary mt8" id="recoverFresh">Start fresh instead</button></div>';
   }
   if (!st.games.length && !st.leagues.length) {
-    h += '<div class="card welcome"><img class="welcome-logo" src="logo-icon.jpg" alt="BowlBoard">' +
-      '<h2>Your bowling season, in one place.</h2>' +
-      '<p class="muted">Log every game — pin by pin, from a photo of the lane screen, or just the totals. BowlBoard keeps your average, stats and league standings.</p>' +
-      '<button class="btn bowl-btn" id="homeNew">' + icon('pin') + 'Bowl a game</button>' +
-      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('league') + 'Set up or import a league</button>' +
+    h += '<div class="card welcome"><img class="welcome-logo" src="primary-logo.png" alt="BowlBoard">' +
+      '<div class="tagline">Built for Bowlers</div>' +
+      '<p class="muted">Log every game — pin by pin, from a photo of the lane screen, or just the score. BowlBoard keeps your average, stats and league standings.</p>' +
+      '<button class="btn" id="homeNew">' + icon('pin') + 'Bowl a game</button>' +
+      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'Set up or import a league</button>' +
       (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Look around with sample data</button>') + '</div>';
     root.innerHTML = h;
     bind(null);
@@ -67,52 +86,57 @@ RENDER.home = function () {
   }
 
   const name = firstName();
-  const leagues = myLeagues();
-  const ctx = leagues.length ? (() => { const l = leagues[0], fw = LG.featuredWeek(l, today); return l.name + (fw && fw.when !== 'last' ? ' · week ' + fw.week : ''); })()
-    : fmtDate(today, { weekday: 'long', month: 'long', day: 'numeric' });
-  h += '<div class="greet"><h2>' + greeting() + (name ? ', ' + esc(name) : '') + '</h2><div class="small muted">' + esc(ctx) + '</div></div>';
+  h += '<div class="greet"><h2>' + greeting() + (name ? ', ' + esc(name) : '') + '</h2></div>';
 
-  // league nights (yours first, then any league night you run today)
-  const cards = leagues.slice(0, 2).map(l => nightCard(l, today)).concat(st.leagues.filter(l => !LG.me(l)).map(l => nightCard(l, today))).filter(Boolean);
-  h += cards.join('');
-
-  // bowl
+  // BOWL: the hero action
   const own = Store.allSeries();
   const latest = own[0];
-  if (latest && latest.date === today && latest.games.length < 6) {
-    h += '<button class="btn bowl-btn" id="homeContinue">' + icon('pin') + 'Continue tonight’s series · game ' + (latest.games.length + 1) + '</button>';
-    h += '<button class="btn secondary mt8" id="homeNew">Start a new series</button>';
-  } else if (/data-act="bowlLeague"/.test(cards.join(''))) {
-    h += '<button class="btn secondary" id="homeNew">' + icon('pin') + 'Bowl a practice game</button>';
-  } else {
-    h += '<button class="btn bowl-btn" id="homeNew">' + icon('pin') + 'Bowl<small>Pin by pin, a photo of the lane screen, or totals</small></button>';
-  }
+  const cont = latest && latest.date === today && latest.games.length < 6;
+  h += '<div class="bowl-card" data-act="bowlCard">' +
+    '<img class="bc-mark" src="logo-mark.png" alt="">' +
+    '<div class="bc-body"><div class="bc-title">BOWL</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
+    '</div>' +
+    '<button class="bc-go" id="' + (cont ? 'homeContinue' : 'homeNew') + '" type="button" aria-label="' + (cont ? 'Continue tonight’s series' : 'Bowl: start a new game') + '">' + icon('arrow') + '</button>' +
+    // the three ways to score get their own full-width row so they never wrap on narrow phones
+    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Pin by pin</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Photo</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Quick score</button></div></div>';
+  if (cont) h += '<button class="link-btn bc-alt" id="homeNew">Start a separate series instead</button>';
 
-  // season
+  // League: tonight right under Bowl; otherwise quietly further down
+  const leagues = myLeagues();
+  const cards = leagues.slice(0, 2).map(l => nightCard(l, today)).concat(st.leagues.filter(l => !LG.me(l)).map(l => nightCard(l, today))).filter(Boolean);
+  const tonight = cards.filter(c => / tonight/.test(c.slice(0, 40)));
+  const later = cards.filter(c => tonight.indexOf(c) < 0);
+  h += tonight.join('');
+
+  // THIS SEASON (paper)
   const sum = I.seasonSummary(mine, today);
   if (sum.games) {
-    h += '<div class="card season"><div class="kicker">' + esc(sum.label) + '</div><div class="season-row"><div class="season-avg"><b>' + (sum.avg == null ? '—' : sum.avg) + '</b><span>average</span>' +
-      (sum.vsLast != null && sum.vsLast !== 0 ? '<em class="' + (sum.vsLast > 0 ? 'up' : 'down') + '">' + (sum.vsLast > 0 ? '+' : '−') + Math.abs(sum.vsLast) + ' vs last season</em>' : '') + '</div>' +
-      '<div class="season-stats"><div><b>' + (sum.high == null ? '—' : sum.high) + '</b><span>high game</span></div><div><b>' + (sum.highSeries || '—') + '</b><span>high series</span></div><div><b>' + sum.games + '</b><span>' + (sum.games === 1 ? 'game' : 'games') + '</span></div></div></div>' +
-      myLeagueChips() + '</div>';
+    const scope = sum.season != null ? mine.filter(g => I.seasonOf(g.date) === sum.season) : mine;
+    h += '<div class="card season-card"><div class="kicker">' + (sum.season != null ? 'This season' : 'All time') + '</div>' +
+      '<div class="season-top"><div class="sa"><b>' + (sum.avg == null ? '—' : sum.avg) + '</b><span>Average</span>' +
+      (sum.vsLast != null && sum.vsLast !== 0 ? '<em class="' + (sum.vsLast > 0 ? 'up' : 'down') + '">' + (sum.vsLast > 0 ? '↑ ' : '↓ ') + Math.abs(sum.vsLast) + ' vs. last season</em>' : '') + '</div>' +
+      sparkline(scope) + '</div>' +
+      '<div class="season-row3"><div><b>' + (sum.high == null ? '—' : sum.high) + '</b><span>High game</span></div><div><b>' + (sum.highSeries || '—') + '</b><span>High series</span></div><div><b>' + sum.games + '</b><span>' + (sum.games === 1 ? 'Game' : 'Games') + '</span></div></div></div>';
   }
 
-  // last night
+  // LAST SESSION
   const series = Store.allSeries(mine);
   const last = series[0];
   if (last) {
-    const when = last.date === today ? 'Today' : last.date === addDays(today, -1) ? 'Last night' : fmtDate(last.date, { weekday: 'short', month: 'short', day: 'numeric' });
     const tot = last.games.filter(g => g.total != null);
-    h += '<button class="card last-night" data-act="series" data-first="' + esc(last.games[0].id) + '"><div class="kicker">' + esc(when) + (last.leagueId ? ' · ' + esc(BB.leagueName(last.leagueId)) : '') + '</div>' +
-      '<div class="ln-games">' + last.games.map(g => '<b>' + (g.total == null ? '—' : g.total) + '</b>').join('<i>·</i>') + '</div>' +
-      (tot.length > 1 ? '<div class="small muted">' + tot.reduce((a, g) => a + g.total, 0) + ' series</div>' : '') + '</button>';
+    h += '<div class="card last-session"><div class="ls-head"><div class="kicker">Last session</div><small>' + esc(fmtDate(last.date, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></div>' +
+      '<div class="ls-row"><div class="ls-games"><div class="g">' + last.games.map(g => (g.total == null ? '—' : g.total)).join('<i>·</i>') + '</div>' +
+      (tot.length > 1 ? '<small>' + tot.reduce((a, g) => a + g.total, 0) + ' series</small>' : '<small>' + (last.leagueId ? esc(BB.leagueName(last.leagueId)) : 'Game') + '</small>') + '</div>' +
+      '<button class="btn-outline" data-act="series" data-first="' + esc(last.games[0].id) + '">View session →</button></div></div>';
   }
 
-  // one insight
+  // YOUR GAME: one insight
   const ins = I.insights(mine, { today, max: 1 })[0];
-  if (ins) h += '<button class="card insight" data-act="go" data-to="stats">' + icon('sparkle') + '<span>' + esc(ins.text) + '</span><span class="more-link">More in Stats ›</span></button>';
+  if (ins) h += '<button class="card your-game" data-act="go" data-to="stats">' + icon('stats') + '<span class="yg"><span class="kicker">Your game</span><span class="yg-title">' + esc(ins.title || '') + '</span><span class="yg-text">' + esc(ins.text) + '</span></span><span class="chev">' + icon('chevron') + '</span></button>';
 
-  // backup
+  h += later.join('');
+
+  // backup: only when it needs doing (and a quiet confirmation once done)
   const bs = backupStatus();
   const snooze = bs.leagueSince ? 1 : 7;
   if (bs.due && daysSince(st.backupNudgeAt) >= snooze) {
@@ -122,19 +146,16 @@ RENDER.home = function () {
   } else if (bs.today) {
     h += '<div class="backup-ok small">' + icon('check') + 'Backed up today</div>';
   }
-
   if (Sample.has(Store)) {
     h += '<div class="notice sample-note"><b>Sample data.</b> These games and the demo league are examples so you can look around. <button class="link-btn" id="clearSamples">Clear sample data</button></div>';
   }
-  const more = series.slice(1, 4);
-  if (more.length) h += '<h2 class="screen-title">Recent</h2>' + more.map(seriesCardHTML).join('') + '<button class="link-btn" data-act="go" data-to="history">All games ›</button>';
   root.innerHTML = h;
   bind(latest);
 };
 
 function bind(latest) {
-  on('homeNew', 'click', () => BB.newGame());
-  on('homeContinue', 'click', () => BB.continueSeries(latest.games[latest.games.length - 1]));
+  on('homeNew', 'click', e => { e.stopPropagation(); BB.newGame(); });
+  on('homeContinue', 'click', e => { e.stopPropagation(); BB.continueSeries(latest.games[latest.games.length - 1]); });
   on('homeSamples', 'click', () => { try { Sample.seed(Store, window.BBScore, LG, todayISO()); toast('Sample data loaded — clear it from Home anytime'); RENDER.home(); } catch (e) { toast('Couldn’t load sample data'); } });
   on('clearSamples', 'click', async () => {
     if (!(await ask('Remove the sample games, balls, centers and demo league? Anything you entered yourself stays.', 'Clear sample data', true))) return;
@@ -144,7 +165,7 @@ function bind(latest) {
   on('nudgeLater', 'click', () => { Store.state.backupNudgeAt = new Date().toISOString(); Store.save(); RENDER.home(); });
   on('recoverFresh', 'click', async () => {
     const kept = Store.recovery && Store.recovery.kept;
-    const msg = kept ? 'Start with no data? What couldn\u2019t be read stays set aside, and automatic copies stay under More → Backup.'
+    const msg = kept ? 'Start with no data? What couldn’t be read stays set aside, and automatic copies stay under More → Backup.'
       : 'This phone had no room to set the unreadable data aside, so starting fresh will replace it. Download it first from More → Backup & restore if you might need it. Start fresh anyway?';
     if (!(await ask(msg, kept ? 'Start fresh' : 'Start fresh anyway', !kept))) return;
     Store.dismissRecovery(); RENDER.home();
@@ -152,6 +173,13 @@ function bind(latest) {
 }
 BB.ACT.home = {
   bowlLeague: a => BB.newGame({ leagueId: a.dataset.id }),
+  bowlMode: (a, e) => { e.stopPropagation(); BB.newGame({ mode: a.dataset.mode }); },
+  bowlCard: (a, e) => {
+    if (e.target.closest('button')) return; // the buttons inside handle themselves
+    const own = Store.allSeries()[0];
+    if (own && own.date === todayISO() && own.games.length < 6) BB.continueSeries(own.games[own.games.length - 1]);
+    else BB.newGame();
+  },
 };
 
 function myLeagueChips() {

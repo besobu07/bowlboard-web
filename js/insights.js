@@ -110,7 +110,7 @@
       const last = floorAvg(totals.slice(-10)), prev = floorAvg(totals.slice(-20, -10));
       const d = last - prev;
       if (Math.abs(d) >= 3) {
-        out.push({ id: 'trend', tone: d > 0 ? 'up' : 'down', text: d > 0
+        out.push({ id: 'trend', tone: d > 0 ? 'up' : 'down', title: d > 0 ? 'You\u2019re on a roll.' : 'A quieter stretch.', text: d > 0
           ? 'Your average is up ' + d + ' pins over your last 10 games (' + last + ', was ' + prev + ').'
           : 'Your last 10 games average ' + last + ', ' + (-d) + ' below the 10 before.' });
       }
@@ -122,38 +122,38 @@
       const hit = thisS.filter(g => g.date === lastDate && g.total === high);
       const before = thisS.filter(g => g.date < lastDate).map(g => g.total);
       if (hit.length && before.length && high > Math.max.apply(null, before)) {
-        out.push({ id: 'seasonHigh', tone: 'up', text: 'New season high: ' + high + ' on ' + fmtShort(lastDate) + '.' });
+        out.push({ id: 'seasonHigh', tone: 'up', title: 'New season high!', text: high + ' on ' + fmtShort(lastDate) + ' is your best game this season.' });
       }
     }
     // 3. 200 games this season
     const two = thisS.filter(g => g.total >= 200).length;
-    if (two) out.push({ id: 'twoHundreds', tone: 'up', text: 'You’ve bowled ' + two + ' game' + (two === 1 ? '' : 's') + ' of 200 or better this season.' });
+    if (two) out.push({ id: 'twoHundreds', tone: 'up', title: 'Welcome to the 200 club.', text: 'You’ve bowled ' + two + ' game' + (two === 1 ? '' : 's') + ' of 200 or better this season.' });
     // 4. spare % vs last season
     const rNow = rates(thisS), rLast = rates(lastS);
     if (rNow && rLast && rNow.games >= 5 && rLast.games >= 5 && rNow.spare != null && rLast.spare != null) {
       const d = rNow.spare - rLast.spare;
-      if (Math.abs(d) >= 3) out.push({ id: 'spares', tone: d > 0 ? 'up' : 'down', text: 'Your spare % is ' + rNow.spare + '%, ' + (d > 0 ? 'up ' : 'down ') + Math.abs(d) + ' points on last season.' });
+      if (Math.abs(d) >= 3) out.push({ id: 'spares', tone: d > 0 ? 'up' : 'down', title: d > 0 ? 'Your spare game is improving.' : 'Spares need some attention.', text: 'Your spare % is ' + rNow.spare + '%, ' + (d > 0 ? 'up ' : 'down ') + Math.abs(d) + ' points on last season.' });
     }
     // 5. corner pins: the weaker of the 10 and the 7 over your last 20 tries
     const pins = [10, 7].map(p => { const a = pinAttempts(all, p).slice(-20); return { p, n: a.length, made: a.filter(x => x.made).length }; })
       .filter(x => x.n >= 5).sort((a, b) => a.made / a.n - b.made / b.n);
     if (pins.length) {
       const x = pins[0];
-      out.push({ id: 'pin' + x.p, tone: x.made / x.n >= 0.85 ? 'up' : 'neutral', text: 'You’ve converted ' + x.made + ' of your last ' + x.n + ' ' + x.p + '-pin attempts.' });
+      out.push({ id: 'pin' + x.p, tone: x.made / x.n >= 0.85 ? 'up' : 'neutral', title: x.made / x.n >= 0.85 ? 'Your spare game is locked in.' : 'Corner pins to work on.', text: 'You’ve converted ' + x.made + ' of your last ' + x.n + ' ' + x.p + '-pin attempts.' });
     }
     // 6. best series
     const hs = highSeries(all);
-    if (hs) out.push({ id: 'bestSeries', tone: 'neutral', text: 'Your best 3-game series is ' + hs.total + ' (' + fmtShort(hs.date) + ').' });
+    if (hs) out.push({ id: 'bestSeries', tone: 'neutral', title: 'Your best night so far.', text: 'Your best 3-game series is ' + hs.total + ' (' + fmtShort(hs.date) + ').' });
     // 7. league nights vs practice
     const lg = all.filter(g => g.leagueId).map(g => g.total), pr = all.filter(g => !g.leagueId).map(g => g.total);
     if (lg.length >= 6 && pr.length >= 6) {
       const d = floorAvg(lg) - floorAvg(pr);
-      if (Math.abs(d) >= 5) out.push({ id: 'leaguePractice', tone: 'neutral', text: 'You average ' + Math.abs(d) + ' more ' + (d > 0 ? 'on league nights than in practice.' : 'in practice than on league nights.') });
+      if (Math.abs(d) >= 5) out.push({ id: 'leaguePractice', tone: 'neutral', title: d > 0 ? 'League nights bring it out.' : 'Practice pays off.', text: 'You average ' + Math.abs(d) + ' more ' + (d > 0 ? 'on league nights than in practice.' : 'in practice than on league nights.') });
     }
     // 8. strike run
     let run = { n: 0 };
     all.filter(g => g.frames).forEach(g => { const n = longestStrikeRun(g); if (n >= run.n) run = { n, date: g.date }; });
-    if (run.n >= 4) out.push({ id: 'strikeRun', tone: 'up', text: 'Longest strike run: ' + run.n + ' in a row (' + fmtShort(run.date) + ').' });
+    if (run.n >= 4) out.push({ id: 'strikeRun', tone: 'up', title: 'On fire.', text: 'Longest strike run: ' + run.n + ' in a row (' + fmtShort(run.date) + ').' });
     return out.slice(0, opts.max || 4);
   }
 

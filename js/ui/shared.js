@@ -7,7 +7,7 @@ const S = window.BBScore, Store = window.BBStore, Data = window.BBData, LG = win
 const { esc, fmtDate, icon, el, on, val, daysSince, plural, EMBED, toast, download, todayISO } = BB;
 
 // Tab bar icons come from the same icon set as everything else.
-const TAB_ICON = { home: 'home', history: 'history', stats: 'stats', league: 'league', more: 'more' };
+const TAB_ICON = { home: 'home', history: 'history', stats: 'stats', league: 'pins', more: 'more' };
 document.querySelectorAll('.tabbar button').forEach(b => { if (!b.querySelector('svg')) b.insertAdjacentHTML('afterbegin', icon(TAB_ICON[b.dataset.nav])); });
 
 const MODE_LABEL = { pins: 'Pin by pin', frames: 'Running totals', total: 'Total only', photo: 'Photo of the lane screen (checked by hand)', sheet: 'League sheet' };

@@ -5,7 +5,7 @@
 const BB = window.BB;
 const Store = window.BBStore, Data = window.BBData, LG = window.BBLeague, Sample = window.BBSample, S = window.BBScore;
 const { RENDER, ACT, EMBED, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ask, openSheet, closeSheet, screenRoot, rerender, backLink, avgFloor, plural, download, backupStatus, backupNow, scoredGames } = BB;
-const VERSION = '0.6';
+const VERSION = '0.7.1';
 
 const item = (ic, t, s, attrs) => '<button class="list-item nav-item" ' + attrs + '><span class="li-ic">' + icon(ic) + '</span><div class="grow"><div class="t">' + t + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div><span class="chev" aria-hidden="true">' + icon('chevron') + '</span></button>';
 
@@ -26,9 +26,11 @@ RENDER.more = function () {
     '<label class="list-item toggle-item"><span class="li-ic">' + icon('vibrate') + '</span><div class="grow"><div class="t">Vibrate on taps</div><div class="s">Pins, strikes and spares (phones that support it)</div></div>' +
     '<input type="checkbox" class="switch" id="setHaptics"' + (prof.haptics === false ? '' : ' checked') + '></label>' +
     installItemHTML();
-  h += '<div class="about"><img src="logo.jpg" alt="BowlBoard logo"><p><b>Your bowling season, in one place.</b></p><p class="small muted">BowlBoard ' + VERSION + ' · your data stays on this device</p></div>';
+  h += item('mail', 'Contact us', 'Questions, ideas or a problem? hello@bowlboard.app', 'id="contactUs"');
+  h += '<div class="about"><img src="primary-logo.png" alt="BowlBoard"><p class="tagline">Built for Bowlers</p><p class="small muted">BowlBoard ' + VERSION + ' · <a href="https://bowlboard.app" target="_blank" rel="noopener">bowlboard.app</a> · your data stays on this device</p></div>';
   screenRoot().innerHTML = h;
   on('installApp', 'click', installFlow);
+  on('contactUs', 'click', () => { const u = 'mailto:hello@bowlboard.app?subject=' + encodeURIComponent('BowlBoard ' + VERSION); if (EMBED) BB.copyText('hello@bowlboard.app').then(ok => toast(ok ? 'Email address copied: hello@bowlboard.app' : 'Email us at hello@bowlboard.app', 4000)); else window.location.href = u; });
   on('moreImport', 'click', () => { show('league', { list: true }); setTimeout(() => BB.importLeagueSheet && BB.importLeagueSheet(), 0); });
   on('loadSamples', 'click', () => {
     try { Sample.seed(Store, S, LG, todayISO()); toast('Sample data loaded — clear it from Home anytime'); show('home'); }
@@ -136,7 +138,7 @@ RENDER.backup = function () {
   h += '<div class="card"><h3>' + icon('clock') + 'Automatic copies on this phone</h3><p class="small muted mt0">BowlBoard keeps a few recent copies by itself: one every 12 hours or so, one after each league night, and one before anything that replaces or erases data. They live on this phone, so they won’t survive a cleared browser — a backup file will.</p><div id="snapList" class="snap-list"><div class="small muted">Looking…</div></div></div>';
   h += '<div class="card"><h3>' + icon('upload') + 'Restore from a backup file</h3><p class="small muted mt0">Replaces everything here with the file’s contents. What’s here now is copied first, so you can undo it below.</p>' +
     '<label class="btn secondary" for="bkFile">Choose backup file…</label><input type="file" id="bkFile" accept="application/json,.json" hidden></div>';
-  if (Store.unreadableText()) h += '<div class="card"><h3>Data that couldn’t be read</h3><p class="small muted mt0">Kept exactly as it was found. Send it to support if you need help recovering it.</p><button class="btn secondary" id="bkUnreadable">Download it</button></div>';
+  if (Store.unreadableText()) h += '<div class="card"><h3>Data that couldn’t be read</h3><p class="small muted mt0">Kept exactly as it was found. Email it to hello@bowlboard.app if you need help recovering it.</p><button class="btn secondary" id="bkUnreadable">Download it</button></div>';
   h += '<div class="card"><h3>Start over</h3><p class="small muted mt0">Erase every game, ball, center and league on this device. An automatic copy is taken first where the browser allows it.</p><button class="btn danger" id="bkReset">Erase all data</button></div>';
   screenRoot().innerHTML = h;
   drawSnapshots();

@@ -10,8 +10,8 @@ const { RENDER, ACT, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ope
 const MODES = [
   ['pins', 'pin', 'Pin by pin', 'Track every throw — every stat', ''],
   ['photo', 'camera', 'Photo of the lane screen', 'Snap the screen when you finish, check it, done', ''],
-  ['frames', 'grid', 'Running totals', 'Copy the score under each frame', 'Average only*'],
-  ['total', 'pencil', 'Total only', 'Just the final score — fastest', 'Average only'],
+  ['frames', 'grid', 'Running totals', 'Copy the score under each frame', ''],
+  ['total', 'pencil', 'Total only', 'Just the final score — fastest', ''],
 ];
 
 let newSetup = null;
