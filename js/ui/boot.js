@@ -11,6 +11,7 @@ if (BB.BUILD.seed && !Store.recovery && !Store.state.seeded && !Store.state.game
 }
 
 Store.onSaveError = () => BB.toast(Store.recovery ? 'Not saving until the unreadable data is dealt with — see Home.' : 'Could not save — phone storage is full or blocked. Back up from More.', 5000);
+if (window.BBAccount) window.BBAccount.init();
 try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) { /* a request, not a guarantee */ }
 
 // Rolling automatic copy (at most every 12 hours), once the page has settled.

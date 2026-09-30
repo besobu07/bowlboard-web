@@ -1,10 +1,9 @@
-/* BowlBoard Accounts Beta configuration.
+/* BowlBoard Accounts Beta — connected Supabase project.
  *
- * Replace these two values with the Project URL and anon/publishable key from
- * your Supabase project. Never put a Supabase service_role/secret key here.
- * Leaving them blank keeps BowlBoard fully local-first.
+ * This is a publishable client key. Database access is protected by Supabase
+ * Row Level Security; never place a service_role/secret key in this file.
  */
 window.BB_SUPABASE = {
-  url: '',
-  anonKey: '',
+  url: 'https://biaxarppmtfioexjlafp.supabase.co',
+  anonKey: 'sb_publishable_L4eeYqbjDYiSw1GaJzlQ-Q_ubdBj2yx',
 };
