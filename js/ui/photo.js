@@ -325,14 +325,17 @@ RENDER.photo = function () {
   let h = BB.entryHeader(su, 'photo');
   h += '<div class="card">';
   if (!photo.img && photo.draft) {
-    h += '<div class="row"><span class="small muted grow">' + icon('screen') + ' No photo — typing it in from the screen.</span><label class="btn secondary small-btn" for="photoFile">' + icon('camera') + 'Add a photo</label></div>' +
-      '<input type="file" id="photoFile" accept="image/*" capture="environment" hidden>';
+    h += '<div class="row"><span class="small muted grow">' + icon('screen') + ' No photo — typing it in from the screen.</span><label class="btn secondary small-btn" for="photoPick">' + icon('camera') + 'Add a photo</label></div>' +
+      '<input type="file" id="photoPick" accept="image/*" hidden>';
   } else if (!photo.img) {
     h += '<p class="mt0">' + icon('screen') + ' <b>Photo of the lane screen</b></p>' +
       '<ul class="tips"><li>Take it when your game is finished.</li><li>Fill the photo with your row — your name and all 10 frames.</li><li>Tilt a little to dodge glare, and hold still for a second.</li></ul>' +
       (EMBED ? '<p class="small muted">Here you can keep the photo with the game and type the frames in; reading the screen works in the installed app.</p>' : '<p class="small muted">BowlBoard drafts the frames from the photo. You check every one before it’s saved.</p>');
-    h += '<label class="btn" for="photoFile">' + icon('camera') + 'Take or choose a photo</label>';
-    h += '<input type="file" id="photoFile" accept="image/*" capture="environment" hidden>';
+    // Two pickers: "capture" opens the camera straight away (and on an iPhone leaves no way to pick from the library),
+    // so choosing an existing photo is its own button, without it.
+    h += '<label class="btn" for="photoFile">' + icon('camera') + 'Take a photo</label>' +
+      '<label class="btn secondary mt8" for="photoPick">' + icon('image') + 'Choose from your photos</label>';
+    h += '<input type="file" id="photoFile" accept="image/*" capture="environment" hidden><input type="file" id="photoPick" accept="image/*" hidden>';
     h += '<button class="btn secondary mt8" id="manualBtn">Skip the photo — type it in</button>';
   } else {
     h += '<div class="crop-wrap' + (photo.cropping ? ' cropping' : '') + '" id="cropWrap"><img class="photo-preview" src="' + Store.safeImage(photo.img) + '" alt="lane screen photo">' +
@@ -363,7 +366,7 @@ RENDER.photo = function () {
   root.innerHTML = h;
   BB.bindEntryBall(su);
 
-  on('photoFile', 'change', async e => {
+  const gotFile = async e => {
     const f = e.target.files[0];
     if (!f) return;
     const raw = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
@@ -372,7 +375,9 @@ RENDER.photo = function () {
       photo.thumb = await downscale(raw, 1000, 0.72); // kept in IndexedDB, not in the main save file
     } catch (err) { toast('Could not read that image'); return; }
     RENDER.photo();
-  });
+  };
+  on('photoFile', 'change', gotFile);
+  on('photoPick', 'change', gotFile);
   on('scanBtn', 'click', autoScan);
   on('cropBtn', 'click', () => { photo.cropping = !photo.cropping; RENDER.photo(); });
   on('cropClear', 'click', () => { photo.crop = null; RENDER.photo(); });
