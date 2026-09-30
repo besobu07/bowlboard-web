@@ -217,7 +217,7 @@ function despeckle(ink, erase, W, H) {
   }
   for (let k = 0; k < n; k++) if (label[k] && drop[label[k]]) erase[k] = 1;
 }
-async function prepare(src, crop) {
+async function prepareMask(src, crop) {
   const img = await loadImage(src);
   const c0 = crop || { x: 0, y: 0, w: 1, h: 1 };
   const sx = Math.round(c0.x * img.width), sy = Math.round(c0.y * img.height);
@@ -256,10 +256,21 @@ async function prepare(src, crop) {
   const thinLines = gridLines(rest, W, H, Math.max(3, Math.round(4 * scale)));
   for (let k = 0; k < W * H; k++) if (thinLines[k]) erase[k] = 1;
   despeckle(ink, erase, W, H);
-  const id = ctx.getImageData(0, 0, W, H), px = id.data;
-  for (let k = 0, p = 0; k < W * H; k++, p += 4) { const v = ink[k] && !erase[k] ? 0 : 255; px[p] = px[p + 1] = px[p + 2] = v; px[p + 3] = 255; }
+  const mask = new Uint8Array(W * H);
+  for (let k = 0; k < W * H; k++) mask[k] = ink[k] && !erase[k] ? 1 : 0;
+  return { mask, W, H };
+}
+function maskToPNG(mask, W, H) {
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d'), id = ctx.createImageData(W, H), px = id.data;
+  for (let k = 0, p = 0; k < W * H; k++, p += 4) { const v = mask[k] ? 0 : 255; px[p] = px[p + 1] = px[p + 2] = v; px[p + 3] = 255; }
   ctx.putImageData(id, 0, 0);
   return c.toDataURL('image/png');
+}
+async function prepare(src, crop) {
+  const m = await prepareMask(src, crop);
+  return maskToPNG(m.mask, m.W, m.H);
 }
 
 // The cleaned copy at a fraction of its size. The reader does better on digits about 30-40 px tall than on the big
@@ -522,7 +533,7 @@ function copyScan() {
   const sc = photo.scan;
   if (!sc) return;
   const chk = photo.draft ? Scan.check(photo.draft) : null;
-  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, error: sc.error, note: sc.note,
+  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, mostly: sc.mostly, agree: sc.agree, error: sc.error, note: sc.note,
     draft: photo.draft, total: chk && chk.ok && chk.complete ? chk.total : null, checked: photo.draft && photo.scanned ? photo.checked : null });
   BB.copyText(text).then(ok => {
     if (ok) toast('Copied. Paste it into an email to hello@bowlboard.app', 4500);
@@ -535,7 +546,8 @@ async function autoScan() {
   const t0 = Date.now();
   const cropNow = () => (photo.crop ? Object.assign({}, photo.crop) : null);
   const size = async () => { try { const im = await loadImage(photo.img); return { w: im.width, h: im.height, crop: cropNow() }; } catch (e) { return { crop: cropNow() }; } };
-  if (typeof Tesseract === 'undefined' || !Tesseract.createWorker) {
+  const haveOCR = typeof Tesseract !== 'undefined' && !!Tesseract.createWorker, haveGlyphs = !!(window.BBGlyphs && window.BBGlyphModel);
+  if (!haveOCR && !haveGlyphs) {
     // no reader: straight to typing it in, at once (the photo's size only matters for the copied details, so it follows)
     photo.note = 'Reading the screen needs a connection the first time — type the frames or the totals in instead.';
     photo.draft = photo.draft || Scan.emptyDraft();
@@ -547,31 +559,39 @@ async function autoScan() {
   photo.scanning = true; photo.cropping = false; photo.note = 'Reading the screen…'; photo.scan = null; RENDER.photo();
   let worker;
   try {
-    photo.proc = await prepare(photo.img, photo.crop);
+    const pm = await prepareMask(photo.img, photo.crop);
+    photo.proc = maskToPNG(pm.mask, pm.W, pm.H);
     const info = await size();
-    try { const pim = await loadImage(photo.proc); info.procW = pim.width; info.procH = pim.height; } catch (e) { /* the cleaned copy is only for the report */ }
+    info.procW = pm.W; info.procH = pm.H;
     photo.scan = { photo: info };
-    worker = await Tesseract.createWorker('eng');
-    const passes = [], raws = [];
+    const passes = [], raws = [], labels = [];
     let r = null, all = null;
-    for (let i = 0; i < PASSES.length; i++) {
-      const p = PASSES[i];
-      if (i) { photo.note = 'Checking the reading…'; RENDER.photo(); }
-      await worker.setParameters({ tessedit_char_whitelist: 'Xx/-0123456789F ', tessedit_pageseg_mode: p.psm, preserve_interword_spaces: '1' });
-      const res = await worker.recognize(await scaled(photo.proc, p.f));
-      passes.push(Scan.linesFromOCR(res.data));
-      raws.push(String((res.data && res.data.text) || ''));
-      all = Scan.combinePasses(passes);
-      r = Scan.read(all.lines);
-      if (r.confirmed) break;   // marks and totals agree: no need to read it again
+    const take = (ls, raw, label) => { passes.push(ls); raws.push(raw); labels.push(label); all = Scan.combinePasses(passes); r = Scan.read(all.lines); };
+    if (haveGlyphs) {
+      // first the built-in glyph-by-glyph reader: instant, and it needs no connection
+      let gl = [];
+      try { gl = BBGlyphs.find(pm.mask, pm.W, pm.H).lines; } catch (e) { gl = []; }
+      if (gl.length) take(gl.map(l => ({ text: l.text, confs: l.confs })), gl.map(l => l.text).join('\n'), 'glyph reader');
     }
+    if (!(r && (r.confirmed || r.mostly)) && haveOCR) {
+      worker = await Tesseract.createWorker('eng');
+      for (let i = 0; i < PASSES.length; i++) {
+        const p = PASSES[i];
+        if (i || passes.length) { photo.note = 'Checking the reading…'; RENDER.photo(); }
+        await worker.setParameters({ tessedit_char_whitelist: 'Xx/-0123456789F ', tessedit_pageseg_mode: p.psm, preserve_interword_spaces: '1' });
+        const res = await worker.recognize(await scaled(photo.proc, p.f));
+        take(Scan.linesFromOCR(res.data), String((res.data && res.data.text) || ''), passLabel(p));
+        if (r.confirmed || r.mostly) break;   // marks and totals agree: no need to read it again
+      }
+    }
+    if (!r) { all = Scan.combinePasses([[]]); r = Scan.read(all.lines); }
     const lines = all.lines;
     info.ms = Date.now() - t0;
-    photo.scan = { photo: info, raw: raws.map((t, i) => (raws.length > 1 ? '— ' + passLabel(PASSES[i]) + ' —\n' : '') + t.replace(/\s+$/, '')).join('\n\n'), lines: lines.map(l => l.text),
-      passes: all.first.map((first, i) => ({ label: passLabel(PASSES[i]), first })), detail: r.detail, totals: r.totals, fitted: r.fitted, confirmed: r.confirmed };
+    photo.scan = { photo: info, raw: raws.map((t, i) => (raws.length > 1 ? '— ' + labels[i] + ' —\n' : '') + t.replace(/\s+$/, '')).join('\n\n'), lines: lines.map(l => l.text),
+      passes: all.first.map((first, i) => ({ label: labels[i], first })), detail: r.detail, totals: r.totals, fitted: r.fitted, confirmed: r.confirmed, mostly: r.mostly, agree: r.agree };
     // A whole-screen photo shows several bowlers' rows, and what comes back is a mix of them that looks like a game but
     // isn't yours. Unless the marks and totals agree (or the totals fit exactly), don't fill in a draft from it: ask for a box.
-    const mixed = !photo.crop && !r.confirmed && !r.fitted;
+    const mixed = !photo.crop && !r.confirmed && !r.mostly && !r.fitted;
     if (mixed) {
       photo.scan.note = 'Nothing was filled in: a whole-screen photo with no box, and the marks and totals did not agree.';
       photo.draft = null; photo.totals = []; photo.scanned = false; photo.checked = false; photo.cropping = true; photo.zoom = null; photo.zoomImg = null;
@@ -586,12 +606,14 @@ async function autoScan() {
     photo.scanned = true;
     photo.checked = false;
     const filled = r.draft.balls.filter(b => b.length).length;
-    const wide = !photo.crop && !r.confirmed ? ' The whole screen is in the photo, so boxing just your row usually reads better.' : '';
-    photo.note = !filled ? 'Couldn\u2019t find the frames. Try boxing just your row, or type the frames or the totals in.'
+    const online = haveOCR ? '' : ' (Online, a second reader also has a go.)';
+    const wide = !photo.crop && !r.confirmed && !r.mostly ? ' The whole screen is in the photo, so boxing just your row usually reads better.' : '';
+    photo.note = !filled ? 'Couldn\u2019t find the frames. Try boxing just your row, or type the frames or the totals in.' + online
+      : r.mostly ? 'Read the marks and the running totals: ' + r.agree + ' of the totals match the marks, so the marks look right. Frames whose total didn\u2019t match are amber.'
       : r.confirmed ? 'Read the marks and the running totals, and they agree frame by frame.'
       : r.fitted ? 'Read the running totals and fitted the frames to them' + (r.detail.unique ? ' (only one game fits them)' : '') + '. Check the amber frames against the screen.' + wide
-      : r.totals.length === 10 ? 'Read ' + r.marks + ' marks. The running totals it read don\u2019t fit any game, so they were probably misread. Check every frame, or type the totals in.' + wide
-      : 'Read ' + r.marks + ' marks. The running totals weren\u2019t readable, so check every frame.' + wide;
+      : r.totals.length === 10 ? 'Read ' + r.marks + ' marks. The running totals it read don\u2019t fit any game, so they were probably misread. Check every frame, or type the totals in.' + wide + online
+      : 'Read ' + r.marks + ' marks. The running totals weren\u2019t readable, so check every frame.' + wide + online;
   } catch (e) {
     photo.note = 'Couldn’t read it — type the frames or the totals in instead.';
     photo.draft = photo.draft || Scan.emptyDraft();
@@ -612,5 +634,5 @@ photo.setDraft = (balls, opts) => {
 };
 
 window.BBPhoto = photo;
-Object.assign(BB, { resetPhoto, preparePhoto: prepare, scalePhoto: scaled });
+Object.assign(BB, { resetPhoto, preparePhoto: prepare, prepareMask, maskToPNG, scalePhoto: scaled });
 })();

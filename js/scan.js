@@ -150,6 +150,17 @@
 
   // Running totals are usually read more reliably than X and / marks. When all ten are
   // there, find the game that fits them and agrees best with the marks that were read.
+  // How many of the totals read line up, in order, with a game's own running totals (a longest common subsequence,
+  // so one total that was dropped or misread doesn't throw off the ones after it). at[i]: cum[i] was matched.
+  function matchTotals(cum, read) {
+    const n = cum.length, m = read.length, L = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+    for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) L[i][j] = cum[i] === read[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    const at = new Array(n).fill(false);
+    let i = 0, j = 0;
+    while (i < n && j < m) { if (cum[i] === read[j]) { at[i] = true; i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++; }
+    return { count: L[0][0], at };
+  }
+  const MOSTLY = 8;   // this many of the ten totals matching a complete game's own running total is enough to trust its marks
   const FIT_MAX = 8; // more disagreement than this between the marks and the totals and a row isn't chosen for its fit
   function fitToTotals(D, cum) {
     if (!Array.isArray(cum) || cum.length !== 10) return null;
@@ -240,22 +251,30 @@
   // frames that changed marked to check.
   function read(lines) {
     const p = parseLines(lines);
-    let draft = draftFromSyms(p.syms), fitted = false, confirmed = false, fit = null;
+    let draft = draftFromSyms(p.syms), fitted = false, confirmed = false, fit = null, agree = null, mostly = false;
     const marksRead = draft.balls.map((b, i) => marks(draft, i));   // what the marks alone said, before the totals decided
     const ballsRead = draft.balls.map(b => b.slice());
-    if (p.totals.length === 10) {
+    if (p.totals.length >= MOSTLY) {
       const c = check(draft);
       const cum = c.ok && c.complete ? S.computeScore(c.game).cumulative : null;
-      if (cum && cum.every((v, i) => v === p.totals[i])) {
+      if (cum && p.totals.length === 10 && cum.every((v, i) => v === p.totals[i])) {
         draft.flags = draft.flags.map(() => 'good');
-        confirmed = true;
-      } else {
-        fit = fitToTotals(draft, p.totals);
-        if (fit) { draft = fit.draft; fitted = true; }
+        confirmed = true; agree = 10;
+      } else if (cum) {
+        // A wrong mark shifts every running total after it, so marks that explain most of the totals are right and the
+        // few that disagree are misread totals (or one that was dropped). Keep the marks; frames whose total didn't
+        // match are shown amber.
+        const m = matchTotals(cum, p.totals);
+        agree = m.count;
+        if (m.count >= MOSTLY) { draft.flags = draft.flags.map((f, i) => (m.at[i] ? 'good' : 'low')); mostly = true; }
       }
     }
+    if (!confirmed && !mostly && p.totals.length === 10) {
+      fit = fitToTotals(draft, p.totals);
+      if (fit) { draft = fit.draft; fitted = true; }
+    }
     const changed = fitted ? draft.balls.map((b, i) => (JSON.stringify(b) === JSON.stringify(ballsRead[i]) ? -1 : i)).filter(i => i >= 0) : [];
-    return { draft, totals: p.totals, fitted, confirmed, marks: p.syms.length,
+    return { draft, totals: p.totals, fitted, confirmed, mostly, agree, marks: p.syms.length,
       detail: { kinds: p.kinds, chosen: p.chosen, marksRead, changed, cost: fit ? fit.cost : null, unique: fit ? fit.unique : null } };
   }
   const parseText = text => parseLines(String(text || '').split(/\r?\n/));
@@ -443,7 +462,7 @@
     const d = o.detail;
     if (d) {
       const n = (o.totals || []).length;
-      L.push('Result: ' + (o.confirmed ? 'the marks and the running totals agree frame by frame'
+      L.push('Result: ' + (o.mostly ? o.agree + ' of the running totals agree with the marks, so the marks were kept' : o.confirmed ? 'the marks and the running totals agree frame by frame'
         : o.fitted ? 'frames fitted to the running totals' + (d.changed.length ? ' (changed: ' + d.changed.map(i => i + 1).join(', ') + ')' : '') + (d.unique ? '; only one game fits these totals' : '; more than one game fits, the closest to the marks was used')
         : n === 10 ? 'the ten running totals it read fit no game, so they were probably misread; marks only'
         : 'marks only (running totals ' + (n ? 'partly read: ' + n + ' of 10' : 'not read') + ')'));
