@@ -5,9 +5,86 @@
 const BB = window.BB;
 const Store = window.BBStore, LG = window.BBLeague, Sample = window.BBSample, S = window.BBScore;
 const { RENDER, ACT, EMBED, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ask, openSheet, closeSheet, screenRoot, rerender, backLink, avgFloor, plural, download, backupStatus, backupNow, scoredGames } = BB;
-const VERSION = '1.2.0';
+const VERSION = '1.3.0 Accounts Beta';
+const Account = window.BBAccount;
 
 const item = (ic, t, s, attrs) => '<button class="list-item nav-item" ' + attrs + '><span class="li-ic">' + icon(ic) + '</span><div class="grow"><div class="t">' + t + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div><span class="chev" aria-hidden="true">' + icon('chevron') + '</span></button>';
+
+function accountItem() {
+  const a = Account && Account.status ? Account.status() : { configured: false, signedIn: false };
+  if (!a.configured) return item('user', 'Account', 'Accounts beta not connected yet', 'id="accountOpen"');
+  if (!a.signedIn) return item('user', 'Create account / Sign in', 'Sync your bowling history across devices', 'id="accountOpen"');
+  return item('check', 'Signed in as ' + esc(a.name || a.email), a.syncing ? 'Syncing your bowling history…' : 'Cloud sync is on', 'id="accountOpen"');
+}
+
+function accountError(e) {
+  const m = String((e && e.message) || e || '');
+  if (/invalid login credentials/i.test(m)) return 'Email or password is incorrect';
+  if (/user already registered/i.test(m)) return 'That email already has a BowlBoard account';
+  return m || 'Account action failed';
+}
+
+async function finishAccountLogin() {
+  try {
+    const r = await Account.reconcileAfterLogin();
+    if (r.action === 'conflict') BB.accountConflictSheet(r.cloud);
+    else if (r.action === 'uploaded-local') toast('Your bowling history is now backed up to your account', 3500);
+    else if (r.action === 'downloaded-cloud') toast('Your bowling history is ready');
+    rerender();
+  } catch (e) { toast('Account connected, but sync needs another try'); }
+}
+
+function accountSheet() {
+  if (!Account || !Account.status().configured) {
+    openSheet('<h3>Accounts beta</h3><p class="muted">The account experience is wired in, but this build is not connected to the BowlBoard beta server yet.</p><p class="small">Add the Supabase Project URL and anon/publishable key to <code>js/config.js</code>. Your local data is unchanged.</p><button class="btn" data-close>Close</button>');
+    return;
+  }
+  const st = Account.status();
+  if (st.signedIn) {
+    openSheet('<h3>Your BowlBoard account</h3><div class="card compact"><strong>' + esc(st.name || 'BowlBoard bowler') + '</strong><div class="small muted mt4">' + esc(st.email) + '</div><div class="small muted mt4">' + (st.syncing ? 'Syncing…' : 'Cloud sync is on') + '</div></div>' +
+      '<div class="row mt12"><button class="btn secondary grow" id="accountSync">Sync now</button><button class="btn danger grow" id="accountSignOut">Sign out</button></div>' +
+      '<p class="small muted mt12">Your score history syncs to your account. Score-sheet photos remain on this device during the beta.</p>', sh => {
+        sh.querySelector('#accountSync').addEventListener('click', async () => { try { await Account.pushCloud(); toast('BowlBoard is synced'); closeSheet(); rerender(); } catch (e) { toast('Couldn’t sync right now'); } });
+        sh.querySelector('#accountSignOut').addEventListener('click', async () => { try { await Account.signOut(); toast('Signed out — your local data stays on this device'); closeSheet(); rerender(); } catch (e) { toast(e.message || 'Couldn’t sign out'); } });
+      });
+    return;
+  }
+  openSheet('<h3>BowlBoard account</h3><p class="muted">Create an account to keep your bowling history with you across devices.</p>' +
+    '<div class="segmented"><button class="active" id="acctTabCreate" type="button">Create account</button><button id="acctTabSignIn" type="button">Sign in</button></div>' +
+    '<div id="acctCreateForm"><label class="field">Name<input type="text" id="acctName" autocomplete="name" placeholder="First name or nickname"></label><label class="field">Email<input type="email" id="acctEmail" autocomplete="email" inputmode="email" placeholder="you@example.com"></label><label class="field">Password<input type="password" id="acctPassword" autocomplete="new-password" placeholder="At least 6 characters"></label><button class="btn" id="acctCreate">Create account</button></div>' +
+    '<div id="acctSignInForm" hidden><label class="field">Email<input type="email" id="acctLoginEmail" autocomplete="email" inputmode="email"></label><label class="field">Password<input type="password" id="acctLoginPassword" autocomplete="current-password"></label><button class="btn" id="acctLogin">Sign in</button><button class="link-btn mt8" id="acctReset">Forgot password?</button></div>' +
+    '<p class="small muted mt12">For the private beta, account data is separated by user. BowlBoard stays usable offline.</p>', sh => {
+      const create = sh.querySelector('#acctCreateForm'), login = sh.querySelector('#acctSignInForm'), ctab = sh.querySelector('#acctTabCreate'), ltab = sh.querySelector('#acctTabSignIn');
+      const setTab = c => { create.hidden = !c; login.hidden = c; ctab.classList.toggle('active', c); ltab.classList.toggle('active', !c); };
+      ctab.addEventListener('click', () => setTab(true)); ltab.addEventListener('click', () => setTab(false));
+      sh.querySelector('#acctCreate').addEventListener('click', async () => {
+        const name = sh.querySelector('#acctName').value.trim(), email = sh.querySelector('#acctEmail').value.trim(), pw = sh.querySelector('#acctPassword').value;
+        if (!name || !email || pw.length < 6) { toast('Enter a name, email and password'); return; }
+        try { const r = await Account.signUp(email, pw, name); if (r.session) { toast('Account created'); closeSheet(); await finishAccountLogin(); } else { toast('Check your email to confirm your account', 5000); closeSheet(); rerender(); } } catch (e) { toast(accountError(e)); }
+      });
+      sh.querySelector('#acctLogin').addEventListener('click', async () => {
+        const email = sh.querySelector('#acctLoginEmail').value.trim(), pw = sh.querySelector('#acctLoginPassword').value;
+        if (!email || !pw) { toast('Enter your email and password'); return; }
+        try { await Account.signIn(email, pw); toast('Signed in'); closeSheet(); await finishAccountLogin(); } catch (e) { toast(accountError(e)); }
+      });
+      sh.querySelector('#acctReset').addEventListener('click', async () => {
+        const email = sh.querySelector('#acctLoginEmail').value.trim();
+        if (!email) { toast('Enter your email first'); return; }
+        try { await Account.resetPassword(email); toast('Password reset email sent'); } catch (e) { toast(accountError(e)); }
+      });
+    });
+}
+
+BB.accountConflictSheet = function (cloud) {
+  const n = (cloud && cloud.data && cloud.data.games || []).length;
+  openSheet('<h3>Choose your bowling history</h3><p class="muted">This device already has bowling data, and this account has a cloud copy. BowlBoard won’t silently overwrite either one.</p>' +
+    '<div class="card"><strong>This device</strong><div class="small muted mt4">Your current games and settings</div></div><div class="card"><strong>Cloud copy</strong><div class="small muted mt4">' + n + ' game' + (n === 1 ? '' : 's') + ' · last updated ' + esc(cloud.updatedAt ? new Date(cloud.updatedAt).toLocaleString() : 'recently') + '</div></div>' +
+    '<div class="row mt12"><button class="btn secondary grow" id="useDevice">Keep this device</button><button class="btn grow" id="useCloud">Use cloud copy</button></div><p class="small muted mt12">Choosing the cloud copy first creates a local safety snapshot. Choosing this device uploads it to your account.</p>', sh => {
+      sh.querySelector('#useDevice').addEventListener('click', async () => { try { await Account.pushCloud(); closeSheet(); toast('This device is now the cloud copy'); rerender(); } catch (e) { toast('Couldn’t upload this device'); } });
+      sh.querySelector('#useCloud').addEventListener('click', async () => { try { await Account.pullCloud(); closeSheet(); toast('Cloud history loaded'); rerender(); } catch (e) { toast('Couldn’t load the cloud copy'); } });
+    });
+};
+
 
 RENDER.more = function () {
   const st = Store.state;
@@ -23,7 +100,8 @@ RENDER.more = function () {
     item('download', 'Export my games', 'Excel, CSV or a printable PDF report', 'id="moreExport"') +
     item('upload', 'Import a league', 'From a LeagueSecretary or BLS weekly-scores file', 'id="moreImport"') +
     (Sample.has(Store) ? '' : item('sparkle', 'Load sample data', 'Example games and a demo league, labelled and removable', 'id="loadSamples"'));
-  h += '<h3 class="group-title">App</h3>' +
+  h += '<h3 class="group-title">Account</h3>' + accountItem() +
+    '<h3 class="group-title">App</h3>' +
     item('user', 'Your name', prof.name ? esc(prof.name) : 'For the greeting on Home', 'id="setName"') +
     '<label class="list-item toggle-item"><span class="li-ic">' + icon('vibrate') + '</span><div class="grow"><div class="t">Vibrate on taps</div><div class="s">Pins, strikes and spares (phones that support it)</div></div>' +
     '<input type="checkbox" class="switch" id="setHaptics"' + (prof.haptics === false ? '' : ' checked') + '></label>' +
@@ -47,6 +125,7 @@ RENDER.more = function () {
     });
   }));
   on('setHaptics', 'change', e => { st.profile = Object.assign({}, st.profile, { haptics: e.target.checked }); Store.save(); if (e.target.checked) BB.haptic('tap'); });
+  on('accountOpen', 'click', accountSheet);
 };
 
 /* ---------- centers ---------- */

@@ -966,3 +966,8 @@ a { color: var(--gold); }
 .session-context b { display:block; margin-top:2px; font-size:14px; }
 .session-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
 @media (max-width:380px) { .session-games { grid-template-columns:repeat(2,1fr); } }
+
+/* Accounts beta */
+.segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 12px 0 14px; background: var(--surface-2, #171717); border: 1px solid var(--line, #2a2a2a); border-radius: 12px; }
+.segmented button { border: 0; background: transparent; color: var(--muted, #999); border-radius: 9px; padding: 9px 10px; font: inherit; font-weight: 700; cursor: pointer; }
+.segmented button.active { background: var(--surface, #242424); color: var(--text, #fff); }

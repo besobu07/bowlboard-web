@@ -1,7 +1,7 @@
 /* BowlBoard offline support: keeps the app itself on the phone so it opens at the
  * lanes with no signal. Your games are stored separately (localStorage/IndexedDB)
  * and are never touched here. build.py stamps VERSION so each deploy refreshes. */
-const VERSION = 'eae7ce9b89';
+const VERSION = 'ef412e897a';
 const CACHE = 'bowlboard-' + VERSION;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
@@ -9,6 +9,8 @@ const ASSETS = [
   './js/data.js',
   './js/ball-list.js',
   './js/store.js',
+  './js/config.js',
+  './js/account.js',
   './js/league.js',
   './js/xlsx.js',
   './js/games-import.js',

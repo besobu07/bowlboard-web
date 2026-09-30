@@ -134,6 +134,7 @@
     try {
       localStorage.setItem(KEY, JSON.stringify(state));
       storageOK = true;
+      if (Store.onSave) { try { Store.onSave(); } catch (e) { /* cloud sync must never break local saves */ } }
       return true;
     } catch (e) {
       storageOK = false;
@@ -327,7 +328,7 @@
   }
 
   const Store = {
-    state, save, saveSoon, flush, uid, migrate, safeImage, parseLanes, photos, syncLinks, snapshots, keepPendingRaw,
+    state, save, saveSoon, flush, uid, migrate, safeImage, parseLanes, photos, syncLinks, snapshots, keepPendingRaw, replaceState,
     get storageOK() { return storageOK; },
     get recovery() { return recovery; },
     // "Start fresh" after unreadable data: the unreadable text stays set aside.
