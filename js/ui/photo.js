@@ -1,6 +1,6 @@
 /* BowlBoard — photo of the lane screen. The scan only ever drafts the game:
  *   1. snap the overhead/console screen when the game is done
- *   2. optionally drag a box around your row
+ *   2. optionally drag a box around your row (no double-tap zoom; use the explicit crop controls)
  *   3. the crop is cleaned up (grey, contrast, dark screens flipped to dark-on-light,
  *      black and white) and read for marks only: X / - F and single digits
  *   4. marks are placed by bowling rules (js/scan.js); anything impossible or unclear

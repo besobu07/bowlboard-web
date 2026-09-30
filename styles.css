@@ -600,6 +600,7 @@ ul.tips { margin: 4px 0 10px; padding-left: 20px; font-size: 14px; }
 ul.tips li { margin: 3px 0; }
 .crop-wrap { position: relative; width: fit-content; max-width: 100%; margin: 10px auto 6px; border-radius: 10px; overflow: hidden; background: #000; line-height: 0; }
 .crop-wrap .photo-preview { display: block; width: auto; height: auto; max-width: 100%; max-height: 360px; margin: 0; border: 0; border-radius: 0; object-fit: fill; }
+.crop-wrap { touch-action: manipulation; }
 .crop-wrap.cropping { touch-action: none; cursor: crosshair; outline: 2px dashed var(--cyan); outline-offset: -2px; -webkit-user-select: none; user-select: none; }
 .crop-box { position: absolute; border: 2px solid var(--amber); border-radius: 3px; box-shadow: 0 0 0 9999px rgba(0,0,0,.5); pointer-events: none; }
 details.proc { margin: 8px 0 0; font-size: 13px; }
@@ -925,3 +926,20 @@ a { color: var(--gold); }
 .welcome-choice { margin-top:14px; padding-top:14px; border-top:1px solid var(--line); text-align:left; }
 .welcome-choice b { font-family:var(--font-head); font-size:16px; }
 .welcome-choice p { margin:4px 0 0; font-size:13px; }
+
+
+/* v1.0: history calendar */
+.calendar-toggle { display:flex; gap:8px; margin:10px 0 12px; }
+.calendar-toggle .btn { flex:1; }
+.cal-head { display:flex; align-items:center; justify-content:space-between; margin-bottom:10px; }
+.cal-head h3 { margin:0; }
+.cal-grid { display:grid; grid-template-columns:repeat(7,1fr); gap:5px; }
+.cal-dow { text-align:center; font-size:10px; font-weight:700; color:var(--muted); padding:3px 0; }
+.cal-day { min-height:54px; border:1px solid var(--line); border-radius:10px; background:var(--paper); padding:5px; text-align:left; position:relative; }
+.cal-day.muted { opacity:.38; }
+.cal-day.today { outline:2px solid var(--amber); outline-offset:-2px; }
+.cal-day.has-games { cursor:pointer; }
+.cal-num { font-size:11px; font-weight:700; }
+.cal-score { display:block; margin-top:5px; font-size:14px; font-weight:800; }
+.cal-meta { display:block; font-size:9px; color:var(--muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.season-wrap-card { margin-top:12px; }

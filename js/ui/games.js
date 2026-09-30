@@ -30,7 +30,27 @@ function typeOptions(sel) {
 const rangeOptions = sel => RANGES.map(o => '<option value="' + o[0] + '"' + (sel === o[0] ? ' selected' : '') + '>' + o[1] + '</option>').join('');
 
 /* ---------- history ---------- */
-const histFilter = { preset: 'all', center: '', ball: '', type: '' };
+const histFilter = { preset: 'all', center: '', ball: '', type: '', view: 'list', month: null };
+function monthISO(d) { return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); }
+function calendarHTML(games, month) {
+  const now = new Date();
+  const base = month ? new Date(month + '-01T12:00:00') : new Date(now.getFullYear(), now.getMonth(), 1, 12);
+  const key = monthISO(base), first = new Date(base.getFullYear(), base.getMonth(), 1, 12);
+  const start = new Date(first); start.setDate(1 - first.getDay());
+  const byDay = {};
+  games.forEach(g => { (byDay[g.date] ||= []).push(g); });
+  let h = '<div class="card season-wrap-card"><div class="cal-head"><button class="btn secondary small-btn" id="calPrev" aria-label="Previous month">‹</button><h3>' + first.toLocaleDateString(undefined, { month:'long', year:'numeric' }) + '</h3><button class="btn secondary small-btn" id="calNext" aria-label="Next month">›</button></div><div class="cal-grid">';
+  ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].forEach(x => h += '<div class="cal-dow">' + x + '</div>');
+  for (let i=0;i<42;i++) {
+    const d = new Date(start); d.setDate(start.getDate()+i);
+    const iso = d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+    const gs = byDay[iso] || []; const inMonth = d.getMonth() === first.getMonth(); const cls = 'cal-day' + (!inMonth?' muted':'') + (gs.length?' has-games':'') + (iso===todayISO()?' today':'');
+    const scores = gs.filter(g=>g.total!=null).map(g=>g.total);
+    h += '<button class="' + cls + '" ' + (gs.length ? 'data-act="calendarDay" data-date="'+iso+'"' : 'disabled') + '><span class="cal-num">'+d.getDate()+'</span>' + (scores.length ? '<span class="cal-score">'+(scores.length===1?scores[0]:scores.length+' games')+'</span><span class="cal-meta">'+(scores.length>1?'avg '+Math.floor(scores.reduce((a,b)=>a+b,0)/scores.length):'game')+'</span>' : '') + '</button>';
+  }
+  return h + '</div><div class="small muted mt8">Tap a day with games to open that session.</div></div>';
+}
+
 RENDER.history = function () {
   const root = screenRoot();
   let h = '<div class="head-row"><h2 class="screen-title">History</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '</div><div class="filters">';
@@ -40,18 +60,23 @@ RENDER.history = function () {
     Store.state.centers.map(a => '<option value="' + a.id + '"' + (histFilter.center === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>';
   h += '<select id="hfBall" aria-label="Ball"><option value="">All balls</option><option value="__house"' + (histFilter.ball === '__house' ? ' selected' : '') + '>House ball</option>' +
     Store.state.balls.map(b => '<option value="' + b.id + '"' + (histFilter.ball === b.id ? ' selected' : '') + '>' + esc(b.brand + ' ' + b.name) + '</option>').join('') + '</select>';
-  h += '</div><div id="histList">';
+  h += '</div><div class="calendar-toggle"><button class="btn ' + (histFilter.view === 'list' ? '' : 'secondary') + '" id="histListBtn">List</button><button class="btn ' + (histFilter.view === 'calendar' ? '' : 'secondary') + '" id="histCalBtn">Calendar</button></div><div id="histList">';
   const games = myGames().filter(g => inRange(g.date, histFilter.preset) && typeMatch(g, histFilter.type) &&
     (!histFilter.center || g.centerId === histFilter.center) &&
     (!histFilter.ball || (!g.sheet && (histFilter.ball === '__house' ? !g.ballId : g.ballId === histFilter.ball))));
   const series = Store.allSeries(games);
-  h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.<br><button class="btn small-btn secondary mt8" id="hfImport">' + icon('upload') + 'Import scores from a file</button>') + '</div>';
+  if (histFilter.view === 'calendar') h += calendarHTML(games, histFilter.month);
+  else h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.<br><button class="btn small-btn secondary mt8" id="hfImport">' + icon('upload') + 'Import scores from a file</button>') + '</div>';
   h += '</div>';
   root.innerHTML = h;
   on('hfPreset', 'change', e => { histFilter.preset = e.target.value; RENDER.history(); });
   on('hfType', 'change', e => { histFilter.type = e.target.value; RENDER.history(); });
   on('hfCenter', 'change', e => { histFilter.center = e.target.value; RENDER.history(); });
   on('hfBall', 'change', e => { histFilter.ball = e.target.value; RENDER.history(); });
+  on('histListBtn', 'click', () => { histFilter.view = 'list'; RENDER.history(); });
+  on('histCalBtn', 'click', () => { histFilter.view = 'calendar'; histFilter.month = histFilter.month || monthISO(new Date()); RENDER.history(); });
+  on('calPrev', 'click', () => { const d = new Date((histFilter.month || monthISO(new Date()))+'-01T12:00:00'); d.setMonth(d.getMonth()-1); histFilter.month=monthISO(d); RENDER.history(); });
+  on('calNext', 'click', () => { const d = new Date((histFilter.month || monthISO(new Date()))+'-01T12:00:00'); d.setMonth(d.getMonth()+1); histFilter.month=monthISO(d); RENDER.history(); });
   on('hfImport', 'click', () => BB.importScoresSheet());
   on('hfExport', 'click', () => BB.exportSheet());
 };
@@ -197,5 +222,7 @@ function editScore(g) {
   }
 }
 
-Object.assign(BB, { RANGES, inRange, typeMatch, typeOptions, rangeOptions });
+BB.ACT = BB.ACT || {}; BB.ACT.history = BB.ACT.history || {};
+BB.ACT.history.calendarDay = a => { histFilter.view='list'; histFilter.preset='all'; const date=a.dataset.date; const gs=myGames().filter(g=>g.date===date); if(gs.length) show('game',{id:gs[0].id}); };
+Object.assign(BB, { RANGES, inRange, typeMatch, typeOptions, rangeOptions, calendarHTML });
 })();
