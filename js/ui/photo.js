@@ -14,10 +14,10 @@ const BB = window.BB;
 const S = window.BBScore, Store = window.BBStore, Scan = window.BBScan;
 const { RENDER, EMBED, esc, icon, on, el, toast, screenRoot, frameEditor } = BB;
 
-const photo = { setup: null, img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null };
+const photo = { setup: null, img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null };
 function resetPhoto(setup) {
   photo.setup = setup || photo.setup;
-  Object.assign(photo, { img: null, thumb: null, crop: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null });
+  Object.assign(photo, { img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null });
 }
 function loadImage(src) {
   return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = reject; im.src = src; });
@@ -317,6 +317,25 @@ async function scaled(dataURL, f) {
 const PASSES = [{ psm: '6', f: 0.6 }, { psm: '6', f: 0.5 }, { psm: '6', f: 0.4 }];
 const passLabel = p => 'layout ' + p.psm + ' at ' + Math.round(p.f * 100) + '%';
 
+// Boxing is two steps, because one row of a scoreboard across the room is a few millimetres tall on a phone: first a
+// rough box around the whole scoreboard zooms in on it, then a box around your row on the enlarged view. photo.crop
+// always stays in the original photo's terms (0 to 1 across and down), wherever on screen it was drawn.
+const UNIT = { x: 0, y: 0, w: 1, h: 1 };
+const viewOf = () => (photo.zoom && photo.zoomImg ? { img: photo.zoomImg, r: photo.zoom } : { img: photo.img, r: UNIT });
+const inView = (c, r) => ({ x: (c.x - r.x) / r.w, y: (c.y - r.y) / r.h, w: c.w / r.w, h: c.h / r.h });
+async function makeZoom() {
+  const im = await loadImage(photo.img), z = photo.zoom;
+  const sx = Math.round(z.x * im.width), sy = Math.round(z.y * im.height);
+  const sw = Math.max(8, Math.round(z.w * im.width)), sh = Math.max(8, Math.round(z.h * im.height));
+  const k = Math.min(1, 1400 / sw);
+  const c = document.createElement('canvas');
+  c.width = Math.max(8, Math.round(sw * k)); c.height = Math.max(8, Math.round(sh * k));
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(im, sx, sy, sw, sh, 0, 0, c.width, c.height);
+  photo.zoomImg = c.toDataURL('image/jpeg', 0.88);
+}
+
 RENDER.photo = function () {
   const root = screenRoot();
   if (!photo.setup) { BB.show('new'); return; }
@@ -338,13 +357,17 @@ RENDER.photo = function () {
     h += '<input type="file" id="photoFile" accept="image/*" capture="environment" hidden><input type="file" id="photoPick" accept="image/*" hidden>';
     h += '<button class="btn secondary mt8" id="manualBtn">Skip the photo — type it in</button>';
   } else {
-    h += '<div class="crop-wrap' + (photo.cropping ? ' cropping' : '') + '" id="cropWrap"><img class="photo-preview" src="' + Store.safeImage(photo.img) + '" alt="lane screen photo">' +
-      (photo.crop ? '<div class="crop-box" style="left:' + photo.crop.x * 100 + '%;top:' + photo.crop.y * 100 + '%;width:' + photo.crop.w * 100 + '%;height:' + photo.crop.h * 100 + '%"></div>' : '') + '</div>';
-    h += '<div class="small muted">' + (photo.cropping ? 'Drag a box around your row, then tap Done.' : photo.crop ? 'Reading only the boxed area.' : 'Tip: box in just your row for a cleaner read.') + '</div>';
-    if (!EMBED) h += '<button class="btn mt8" id="scanBtn"' + (photo.scanning || photo.cropping ? ' disabled' : '') + '>' + icon('sparkle') + (photo.scanning ? 'Reading…' : photo.scanned ? 'Read it again' : 'Read the screen') + '</button>';
+    const v = viewOf(), step1 = photo.cropping && !photo.zoom, bx = photo.crop && !step1 ? inView(photo.crop, v.r) : null;
+    h += '<div class="crop-wrap' + (photo.cropping ? ' cropping' : '') + '" id="cropWrap"><img class="photo-preview" src="' + Store.safeImage(v.img) + '" alt="lane screen photo">' +
+      (bx ? '<div class="crop-box" style="left:' + bx.x * 100 + '%;top:' + bx.y * 100 + '%;width:' + bx.w * 100 + '%;height:' + bx.h * 100 + '%"></div>' : '') + '</div>';
+    h += '<div class="small muted" id="cropHint">' + (step1 ? '<b>Step 1 of 2.</b> Drag a box around the whole scoreboard to zoom in.' : photo.cropping ? '<b>Step 2 of 2.</b> Now drag a box around your row' + (photo.crop ? ', then tap Done.' : '.')
+      : photo.crop ? 'Reading only the boxed area.' : 'Tip: box in just your row for a cleaner read.') + '</div>';
+    if (!EMBED) h += '<button class="btn mt8" id="scanBtn"' + (photo.scanning || (photo.cropping && !photo.crop) ? ' disabled' : '') + '>' + icon('sparkle') + (photo.scanning ? 'Reading…' : photo.scanned ? 'Read it again' : 'Read the screen') + '</button>';
     h += '<div class="row wrap mt8 photo-tools">' +
-      '<button class="btn secondary small-btn" id="cropBtn" aria-pressed="' + photo.cropping + '">' + icon('crop') + (photo.cropping ? 'Done' : photo.crop ? 'Re-box' : 'Box my row') + '</button>' +
-      (photo.crop && !photo.cropping ? '<button class="btn secondary small-btn" id="cropClear">Whole photo</button>' : '') +
+      (step1 ? '<button class="btn secondary small-btn" id="cropSkip">My row fills the photo</button>'
+        : '<button class="btn secondary small-btn" id="cropBtn" aria-pressed="' + photo.cropping + '">' + icon('crop') + (photo.cropping ? 'Done' : photo.crop ? 'Re-box' : 'Box my row') + '</button>') +
+      (photo.cropping && photo.zoom ? '<button class="btn secondary small-btn" id="zoomOut">Zoom out</button><button class="btn secondary small-btn" id="cropAll">Use this whole view</button>' : '') +
+      ((photo.crop || photo.zoom) && !photo.cropping ? '<button class="btn secondary small-btn" id="cropClear">Whole photo</button>' : '') +
       (photo.draft ? '' : '<button class="btn secondary small-btn" id="manualBtn">Type it in</button>') +
       '<button class="btn secondary small-btn" id="totalsBtn">Type the totals</button>' +
       '<button class="btn secondary small-btn" id="clearPhotoBtn">Retake</button></div>';
@@ -371,16 +394,23 @@ RENDER.photo = function () {
     if (!f) return;
     const raw = await new Promise(res => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(f); });
     try {
-      photo.img = await downscale(raw, 2000, 0.9);
+      photo.img = await downscale(raw, 3000, 0.9);   // a scoreboard across the room is a small part of the picture, so keep the detail
       photo.thumb = await downscale(raw, 1000, 0.72); // kept in IndexedDB, not in the main save file
     } catch (err) { toast('Could not read that image'); return; }
+    Object.assign(photo, { crop: null, zoom: null, zoomImg: null, cropping: true, proc: null, scan: null, scanned: false, note: '' });   // straight into boxing your row
     RENDER.photo();
   };
   on('photoFile', 'change', gotFile);
   on('photoPick', 'change', gotFile);
   on('scanBtn', 'click', autoScan);
-  on('cropBtn', 'click', () => { photo.cropping = !photo.cropping; RENDER.photo(); });
-  on('cropClear', 'click', () => { photo.crop = null; RENDER.photo(); });
+  on('cropBtn', 'click', () => {
+    if (photo.cropping && photo.zoom && !photo.crop) photo.crop = Object.assign({}, photo.zoom);   // zoomed in but no row boxed: read what is zoomed in on
+    photo.cropping = !photo.cropping; RENDER.photo();
+  });
+  on('cropSkip', 'click', () => { photo.cropping = false; photo.crop = null; RENDER.photo(); });
+  on('cropAll', 'click', () => { photo.crop = Object.assign({}, photo.zoom); photo.cropping = false; RENDER.photo(); });
+  on('zoomOut', 'click', () => { photo.zoom = null; photo.zoomImg = null; photo.crop = null; RENDER.photo(); });
+  on('cropClear', 'click', () => { photo.crop = null; photo.zoom = null; photo.zoomImg = null; RENDER.photo(); });
   on('manualBtn', 'click', () => { photo.draft = photo.draft || Scan.emptyDraft(); photo.note = ''; RENDER.photo(); });
   on('totalsBtn', 'click', () => { photo.view = 'totals'; RENDER.photo(); });
   on('copyScanBtn', 'click', copyScan);
@@ -391,22 +421,32 @@ RENDER.photo = function () {
 
 function bindCrop(wrap) {
   if (!wrap) return;
-  let start = null, box = null;
-  const pt = e => { const r = wrap.getBoundingClientRect(); return { x: Math.max(0, Math.min(1, (e.clientX - r.left) / r.width)), y: Math.max(0, Math.min(1, (e.clientY - r.top) / r.height)) }; };
+  const r = viewOf().r;
+  let start = null, box = null, cur = null;
+  const pt = e => { const b = wrap.getBoundingClientRect(); return { x: Math.max(0, Math.min(1, (e.clientX - b.left) / b.width)), y: Math.max(0, Math.min(1, (e.clientY - b.top) / b.height)) }; };
   wrap.addEventListener('pointerdown', e => {
     e.preventDefault();
-    start = pt(e);
+    start = pt(e); cur = null;
     wrap.setPointerCapture && wrap.setPointerCapture(e.pointerId);
     box = wrap.querySelector('.crop-box') || wrap.appendChild(Object.assign(document.createElement('div'), { className: 'crop-box' }));
   });
   wrap.addEventListener('pointermove', e => {
     if (!start) return;
     const q = pt(e);
-    const c = { x: Math.min(start.x, q.x), y: Math.min(start.y, q.y), w: Math.abs(q.x - start.x), h: Math.abs(q.y - start.y) };
-    Object.assign(box.style, { left: c.x * 100 + '%', top: c.y * 100 + '%', width: c.w * 100 + '%', height: c.h * 100 + '%' });
-    photo.crop = c.w > 0.04 && c.h > 0.02 ? c : null;
+    cur = { x: Math.min(start.x, q.x), y: Math.min(start.y, q.y), w: Math.abs(q.x - start.x), h: Math.abs(q.y - start.y) };
+    Object.assign(box.style, { left: cur.x * 100 + '%', top: cur.y * 100 + '%', width: cur.w * 100 + '%', height: cur.h * 100 + '%' });
   });
-  const end = () => { start = null; };
+  const end = () => {
+    if (!start) return;
+    start = null;
+    const c = cur; cur = null;
+    if (!c || c.w <= 0.08 || c.h <= 0.04) { if (box && !photo.crop) box.remove(); return; }   // a tap, or too small to be a box
+    const orig = { x: r.x + c.x * r.w, y: r.y + c.y * r.h, w: c.w * r.w, h: c.h * r.h };   // in the original photo's terms
+    if (!photo.zoom) {   // step 1: zoom in on the scoreboard
+      photo.zoom = orig; photo.zoomImg = null; photo.crop = null;
+      makeZoom().then(() => RENDER.photo()).catch(() => { photo.zoom = null; photo.crop = orig; RENDER.photo(); });   // can't zoom: take it as the row
+    } else { photo.crop = orig; RENDER.photo(); }   // step 2: your row
+  };
   wrap.addEventListener('pointerup', end);
   wrap.addEventListener('pointercancel', end);
 }
@@ -482,7 +522,7 @@ function copyScan() {
   const sc = photo.scan;
   if (!sc) return;
   const chk = photo.draft ? Scan.check(photo.draft) : null;
-  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, error: sc.error,
+  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, error: sc.error, note: sc.note,
     draft: photo.draft, total: chk && chk.ok && chk.complete ? chk.total : null, checked: photo.draft && photo.scanned ? photo.checked : null });
   BB.copyText(text).then(ok => {
     if (ok) toast('Copied. Paste it into an email to hello@bowlboard.app', 4500);
@@ -504,7 +544,7 @@ async function autoScan() {
     size().then(info => { sc.photo = info; });
     return;
   }
-  photo.scanning = true; photo.note = 'Reading the screen…'; photo.scan = null; RENDER.photo();
+  photo.scanning = true; photo.cropping = false; photo.note = 'Reading the screen…'; photo.scan = null; RENDER.photo();
   let worker;
   try {
     photo.proc = await prepare(photo.img, photo.crop);
@@ -529,6 +569,17 @@ async function autoScan() {
     info.ms = Date.now() - t0;
     photo.scan = { photo: info, raw: raws.map((t, i) => (raws.length > 1 ? '— ' + passLabel(PASSES[i]) + ' —\n' : '') + t.replace(/\s+$/, '')).join('\n\n'), lines: lines.map(l => l.text),
       passes: all.first.map((first, i) => ({ label: passLabel(PASSES[i]), first })), detail: r.detail, totals: r.totals, fitted: r.fitted, confirmed: r.confirmed };
+    // A whole-screen photo shows several bowlers' rows, and what comes back is a mix of them that looks like a game but
+    // isn't yours. Unless the marks and totals agree (or the totals fit exactly), don't fill in a draft from it: ask for a box.
+    const mixed = !photo.crop && !r.confirmed && !r.fitted;
+    if (mixed) {
+      photo.scan.note = 'Nothing was filled in: a whole-screen photo with no box, and the marks and totals did not agree.';
+      photo.draft = null; photo.totals = []; photo.scanned = false; photo.checked = false; photo.cropping = true; photo.zoom = null; photo.zoomImg = null;
+      photo.note = 'Couldn’t pick your row out of the whole screen. Drag a box around the scoreboard to zoom in, then one around your row. Or tap Type it in.';
+      photo.scanning = false;
+      RENDER.photo();
+      return;
+    }
     photo.draft = r.draft;
     photo.totals = r.totals.length === 10 ? r.totals : [];
     if (photo.rt && photo.rt.cum.every(v => v === '')) photo.rt = null;   // nothing typed yet: let the totals it read fill the boxes

@@ -439,6 +439,7 @@
     if (ph) L.push('Photo: ' + [ph.w && ph.h ? ph.w + '×' + ph.h : '', ph.crop ? 'box x ' + pct(ph.crop.x) + ', y ' + pct(ph.crop.y) + ', w ' + pct(ph.crop.w) + ', h ' + pct(ph.crop.h) : 'whole photo',
       ph.procW ? 'cleaned crop ' + ph.procW + '×' + ph.procH : '', ph.ms != null ? 'read in ' + (ph.ms / 1000).toFixed(1) + ' s' : ''].filter(Boolean).join(' · '));
     if (o.error) L.push('Problem: ' + o.error);
+    if (o.note) L.push('Note: ' + o.note);
     const d = o.detail;
     if (d) {
       const n = (o.totals || []).length;
