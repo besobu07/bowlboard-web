@@ -73,8 +73,8 @@ RENDER.home = function () {
       '<div class="tagline">Built for Bowlers</div>' +
       '<p class="muted">Log every game — pin by pin, from a photo of the lane screen, or just the score. BowlBoard keeps your average, stats and league standings.</p>' +
       '<button class="btn" id="homeNew">' + icon('pin') + 'Bowl a game</button>' +
-      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'In a league? Import your scores</button>' +
-      (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Look around with sample data</button>') + '</div>';
+      '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'I bowl in a league</button>' +
+      (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Explore a sample season</button>') + '</div>';
     root.innerHTML = h;
     bind(null);
     return;
@@ -89,11 +89,11 @@ RENDER.home = function () {
   const cont = latest && latest.date === today && latest.games.length < 6;
   h += '<div class="bowl-card" data-act="bowlCard">' +
     '<img class="bc-mark" src="app-icon.png" alt="">' +
-    '<div class="bc-body"><div class="bc-title">BOWL</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
+    '<div class="bc-body"><div class="bc-title">Bowl</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
     '</div>' +
     '<button class="bc-go" id="' + (cont ? 'homeContinue' : 'homeNew') + '" type="button" aria-label="' + (cont ? 'Continue tonight’s series' : 'Bowl: start a new game') + '">' + icon('arrow') + '</button>' +
     // the three ways to score get their own full-width row so they never wrap on narrow phones
-    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Pin by pin</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Photo</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Quick score</button></div></div>';
+    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Pin by pin</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Photo</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Just the score</button></div></div>';
   if (cont) h += '<button class="link-btn bc-alt" id="homeNew">Start a separate series instead</button>';
 
   // League: tonight right under Bowl; otherwise quietly further down
@@ -102,6 +102,10 @@ RENDER.home = function () {
   const tonight = cards.filter(c => / tonight/.test(c.slice(0, 40)));
   const later = cards.filter(c => tonight.indexOf(c) < 0);
   h += tonight.join('');
+
+  // YOUR GAME: put the most actionable bowling feedback ahead of the historical dashboard.
+  const ins = I.insights(mine, { today, max: 1 })[0];
+  if (ins) h += '<button class="card your-game" data-act="go" data-to="stats">' + icon('stats') + '<span class="yg"><span class="kicker">Your game</span><span class="yg-title">' + esc(ins.title || '') + '</span><span class="yg-text">' + esc(ins.text) + '</span></span><span class="chev">' + icon('chevron') + '</span></button>';
 
   // THIS SEASON (paper)
   const sum = I.seasonSummary(mine, today);
@@ -121,13 +125,9 @@ RENDER.home = function () {
     const tot = last.games.filter(g => g.total != null);
     h += '<div class="card last-session"><div class="ls-head"><div class="kicker">Last session</div><small>' + esc(fmtDate(last.date, { weekday: 'short', month: 'short', day: 'numeric' })) + '</small></div>' +
       '<div class="ls-row"><div class="ls-games"><div class="g">' + last.games.map(g => (g.total == null ? '—' : g.total)).join('<i>·</i>') + '</div>' +
-      (tot.length > 1 ? '<small>' + tot.reduce((a, g) => a + g.total, 0) + ' series</small>' : '<small>' + (last.leagueId ? esc(BB.leagueName(last.leagueId)) : 'Game') + '</small>') + '</div>' +
+      (tot.length > 1 ? '<small>' + tot.reduce((a, g) => a + g.total, 0) + ' series · ' + tot.length + ' games' + (last.leagueId ? ' · ' + esc(BB.leagueName(last.leagueId)) : ' · practice') + '</small>' : '<small>' + (last.leagueId ? esc(BB.leagueName(last.leagueId)) : 'Practice') + '</small>') + '</div>' +
       '<button class="btn-outline" data-act="series" data-first="' + esc(last.games[0].id) + '">View session →</button></div></div>';
   }
-
-  // YOUR GAME: one insight
-  const ins = I.insights(mine, { today, max: 1 })[0];
-  if (ins) h += '<button class="card your-game" data-act="go" data-to="stats">' + icon('stats') + '<span class="yg"><span class="kicker">Your game</span><span class="yg-title">' + esc(ins.title || '') + '</span><span class="yg-text">' + esc(ins.text) + '</span></span><span class="chev">' + icon('chevron') + '</span></button>';
 
   h += later.join('');
 

@@ -389,7 +389,11 @@ RENDER.photo = function () {
   if (photo.draft) {
     if (photo.scanned) {
       const n = photo.draft.flags.filter(f => f === 'low' || f === 'bad').length;
-      h += '<div class="notice draft-note"><b>Draft — check every frame against the screen.</b> ' + (n ? n + ' frame' + (n === 1 ? ' is' : 's are') + ' marked to look at. ' : '') + 'Tap a frame to change it; nothing is saved until you confirm.' +
+      const chk = Scan.check(photo.draft);
+      const totalText = chk && chk.ok && chk.complete ? String(chk.total) : '—';
+      const headline = n ? n + ' frame' + (n === 1 ? '' : 's') + ' to check' : 'Ready to verify';
+      h += '<div class="scan-summary ' + (n ? 'needs-check' : 'ready') + '"><div class="scan-summary-score"><b>' + totalText + '</b><span>' + (chk && chk.ok && chk.complete ? 'Score' : 'Draft score') + '</span></div><div class="scan-summary-copy"><b>' + headline + '</b><span>' + (n ? 'Compare the highlighted frame' + (n === 1 ? '' : 's') + ' with the screen.' : 'BowlBoard read the full game. Tap any frame to inspect it.') + '</span></div></div>' +
+        '<div class="notice draft-note"><b>Draft — check every frame against the screen.</b> ' + (n ? 'The highlighted frame' + (n === 1 ? ' is' : 's are') + ' need a quick look. ' : '') + 'Tap a frame to change it; nothing is saved until you confirm.' +
         '<div class="legend"><span class="lg good">read clearly</span><span class="lg low">check this</span><span class="lg bad">couldn’t be right</span></div></div>';
     } else h += '<div class="small muted">Tap a frame, then its marks on the keypad.</div>';
     h += '<div id="phEditor"></div><div class="scan-status" id="reviewStatus" aria-live="polite"></div>';
