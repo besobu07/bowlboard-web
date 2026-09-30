@@ -1,7 +1,7 @@
 {
   "name": "BowlBoard",
   "short_name": "BowlBoard",
-  "description": "Built for Bowlers: scores, stats, standings and weekly league recaps.",
+  "description": "Built for Bowlers: every game, every session, your bowling history.",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",

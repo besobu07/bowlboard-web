@@ -244,7 +244,7 @@ $('#sheet').addEventListener('click', e => { if (e.target.id === 'sheet') closeS
 /* ---------- navigation + delegated actions ---------- */
 const RENDER = {};
 const ACT = {}; // ACT[screen][action](el, event)
-const TAB_OF = { new: 'home', entry: 'home', photo: 'home', saved: 'home', game: 'history', ball: 'stats', achievements: 'stats', matchup: 'league', centers: 'more', balls: 'more', backup: 'more' };
+const TAB_OF = { new: 'home', entry: 'home', photo: 'home', saved: 'home', session: 'history', game: 'history', ball: 'stats', achievements: 'stats', matchup: 'league', centers: 'more', balls: 'more', backup: 'more' };
 const nav = { current: 'home', params: {} };
 const leaveHooks = []; // fn(from, to) — e.g. offer a backup after league night
 function show(name, params) {
@@ -284,7 +284,7 @@ document.addEventListener('click', e => {
 });
 ACT._global = {
   game: a => show('game', { id: a.dataset.id }),
-  series: (a, e) => { if (!e.target.closest('[data-act="game"]')) show('game', { id: a.dataset.first }); },
+  series: (a, e) => { if (!e.target.closest('[data-act="game"]')) show('session', { id: a.dataset.first }); },
   league: a => show('league', { id: a.dataset.id, tab: a.dataset.tab || 'standings', week: a.dataset.week ? +a.dataset.week : undefined }),
   go: a => show(a.dataset.to, a.dataset.params ? JSON.parse(a.dataset.params) : undefined),
   ball: a => show('ball', { id: a.dataset.id }),

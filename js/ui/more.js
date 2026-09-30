@@ -5,7 +5,7 @@
 const BB = window.BB;
 const Store = window.BBStore, LG = window.BBLeague, Sample = window.BBSample, S = window.BBScore;
 const { RENDER, ACT, EMBED, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ask, openSheet, closeSheet, screenRoot, rerender, backLink, avgFloor, plural, download, backupStatus, backupNow, scoredGames } = BB;
-const VERSION = '1.0.0';
+const VERSION = '1.2.0';
 
 const item = (ic, t, s, attrs) => '<button class="list-item nav-item" ' + attrs + '><span class="li-ic">' + icon(ic) + '</span><div class="grow"><div class="t">' + t + '</div>' + (s ? '<div class="s">' + s + '</div>' : '') + '</div><span class="chev" aria-hidden="true">' + icon('chevron') + '</span></button>';
 

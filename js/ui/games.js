@@ -9,6 +9,7 @@ const { RENDER, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ask, ope
   patternList, lanesFields, readLanes, bindLanes, seriesCardHTML, frameEditor } = BB;
 
 /* ---------- filters (shared with Stats) ---------- */
+let lastEditUndo = null;
 const RANGES = [['all', 'All time'], ['season', 'This season'], ['d7', 'Last 7 days'], ['d30', 'Last 30 days'], ['d90', 'Last 90 days'], ['y365', 'Last year']];
 function inRange(dateISO, preset) {
   if (preset === 'all') return true;
@@ -81,6 +82,51 @@ RENDER.history = function () {
   on('hfExport', 'click', () => BB.exportSheet());
 };
 
+/* ---------- session detail ---------- */
+RENDER.session = function (p) {
+  const first = getAnyGame(p.id);
+  const root = screenRoot();
+  if (!first || first.sheet) { show(first ? 'game' : 'history', first ? { id: first.id } : undefined); return; }
+  const sr = Store.seriesGames(first.seriesId).filter(g => !g.sheet);
+  if (!sr.length) { show('history'); return; }
+  const scored = sr.filter(g => g.total != null);
+  const totals = scored.map(g => g.total);
+  const total = totals.length ? totals.reduce((a,b)=>a+b,0) : null;
+  const avg = totals.length ? Math.floor(total / totals.length) : null;
+  const high = totals.length ? Math.max.apply(null, totals) : null;
+  const detailed = scored.filter(g => Array.isArray(g.frames) && g.frames.length === 10 && !g.framesDerived);
+  const ps = detailed.length ? S.pinStats(detailed.map(g => ({ frames: g.frames.map(S.normFrame) }))) : null;
+  const g0 = sr[0];
+  const context = [
+    [BB.centerLabel(g0.centerId), 'Center'],
+    [laneLabel(g0), 'Lanes'],
+    [g0.pattern, 'Oil pattern'],
+    [g0.ballId ? Store.ballLabel(g0.ballId) : '', 'Ball']
+  ].filter(x => x[0]);
+  let h = backLink('history', 'History');
+  h += '<div class="card session-hero"><div class="kicker">' + esc(fmtDate(g0.date, { weekday:'long', month:'long', day:'numeric', year:'numeric' })) + '</div>' +
+    '<h2 class="screen-title">' + (g0.leagueId ? esc(leagueName(g0.leagueId) || 'League night') : 'Bowling session') + '</h2>' +
+    '<div class="session-score">' + (total != null ? '<div><div class="big-score">' + total + '</div><div class="session-series-label">' + (sr.length > 1 ? sr.length + '-game series' : 'Game') + '</div></div>' : '<div><div class="big-score">—</div><div class="session-series-label">No scores yet</div></div>') + '</div>' +
+    '<div class="session-games">' + sr.map(g => '<button class="session-game" data-act="game" data-id="' + esc(g.id) + '"><small>Game ' + (g.gameNo || 1) + '</small><b>' + (g.total == null ? '—' : g.total) + '</b></button>').join('') + '</div></div>';
+  if (totals.length) h += '<div class="stat-grid">' +
+    '<div class="stat-card"><b>' + avg + '</b><span>Session avg</span></div>' +
+    '<div class="stat-card"><b>' + high + '</b><span>High game</span></div>' +
+    '<div class="stat-card"><b>' + total + '</b><span>Series total</span></div>' +
+    '<div class="stat-card"><b>' + totals.length + '</b><span>Games</span></div></div>';
+  if (context.length) h += '<div class="card"><h3>Session details</h3><div class="session-context">' + context.map(x => '<div class="ctx"><small>' + esc(x[1]) + '</small><b>' + esc(String(x[0])) + '</b></div>').join('') + '</div></div>';
+  if (ps) h += '<div class="card"><h3>How you bowled</h3><div class="stat-grid four">' +
+    '<div class="stat-card"><b>' + BB.pct(ps.strikes, ps.racks) + '</b><span>Strike %</span></div>' +
+    '<div class="stat-card"><b>' + BB.pct(ps.spares, ps.spareOpps) + '</b><span>Spare %</span></div>' +
+    '<div class="stat-card"><b>' + ps.openFrames + '</b><span>Opens</span></div>' +
+    '<div class="stat-card"><b>' + ps.cleanGames + '</b><span>Clean games</span></div></div></div>';
+  const ins = I.insights(scored, { today: todayISO(), max: 2 });
+  if (ins.length) h += '<div class="card insights"><h3>' + icon('sparkle') + ' What stands out</h3><ul>' + ins.map(x => '<li class="' + x.tone + '">' + esc(x.text) + '</li>').join('') + '</ul></div>';
+  h += '<div class="session-actions"><button class="btn secondary" id="sessionShare">' + icon('share') + ' Share session</button><button class="btn secondary" id="sessionContinue">' + icon('pin') + ' Bowl another</button></div>';
+  root.innerHTML = h;
+  on('sessionShare','click',() => BB.shareCard('night',{seriesId:g0.seriesId}));
+  on('sessionContinue','click',() => BB.continueSeries(sr[sr.length-1]));
+};
+
 /* ---------- game detail + edit ---------- */
 RENDER.game = function (p) {
   const g = getAnyGame(p.id);
@@ -121,7 +167,7 @@ RENDER.game = function (p) {
   const l = g.leagueId && Store.getLeague(g.leagueId);
   if (l && !LG.findLink(l, g.id)) h += '<button class="btn secondary mb8" id="sendLeague2">' + icon('link') + 'Send series to ' + esc(l.name) + ' sheet</button>';
   if (g.total != null) h += '<button class="btn secondary mb8" id="shareGame">' + icon('share') + 'Share this game</button>';
-  h += '<div class="row"><button class="btn secondary grow" id="editDetailsBtn">Edit details</button><button class="btn secondary grow" id="editScoreBtn">Edit score</button></div>';
+  h += '<div class="row"><button class="btn secondary grow" id="editDetailsBtn">Edit details</button><button class="btn secondary grow" id="editScoreBtn">Edit score</button></div>' + (lastEditUndo && lastEditUndo.id === g.id ? '<button class="link-btn mt8" id="undoEditBtn">↶ Undo last edit</button>' : '');
   h += '<div class="row mt8"><button class="btn secondary grow" id="addGameBtn">+ Add game to series</button><button class="btn danger" id="delGameBtn">Delete</button></div>';
   root.innerHTML = h;
   if (g.photoId) Store.photos.get(g.photoId).then(src => { const im = el('gamePhoto'); if (im && src && BB.nav.params.id === g.id) { im.src = src; im.hidden = false; } });
@@ -129,6 +175,7 @@ RENDER.game = function (p) {
   on('sendLeague2', 'click', () => BB.sendSeriesSheet(g.seriesId, g.leagueId));
   on('editDetailsBtn', 'click', () => editDetailsSheet(g));
   on('editScoreBtn', 'click', () => editScore(g));
+  on('undoEditBtn', 'click', () => { if (!lastEditUndo || lastEditUndo.id !== g.id) return; Store.updateGame(g.id, lastEditUndo.snapshot); lastEditUndo = null; toast('Edit undone'); rerender(); });
   on('addGameBtn', 'click', () => BB.continueSeries(sr[sr.length - 1]));
   on('delGameBtn', 'click', async () => {
     const linked = l && LG.findLink(l, g.id);
@@ -166,6 +213,7 @@ function editDetailsSheet(g) {
     sh.querySelector('#edSave').addEventListener('click', () => {
       const shared = { date: val('edDate'), centerId: val('edCenter'), leagueId: val('edLeague'), lanes: readLanes('edLane') };
       if (!shared.date) { toast('Pick a date'); return; }
+      lastEditUndo = { id: g.id, snapshot: JSON.parse(JSON.stringify(g)) };
       Store.updateGame(g.id, Object.assign({ pattern: val('edPattern').trim(), ballId: val('edBall') }, shared));
       const all = sh.querySelector('#edAll');
       if (all && all.checked) Store.seriesGames(g.seriesId).forEach(x => { if (x.id !== g.id) Store.updateGame(x.id, shared); });
@@ -200,7 +248,8 @@ function editScore(g) {
         });
         const v = S.validateFrames(frames);
         if (!v.ok) { toast(v.error); return; }
-        Store.updateGame(g.id, { frames: v.game.frames, total: S.computeScore(v.game).total });
+        lastEditUndo = { id: g.id, snapshot: JSON.parse(JSON.stringify(g)) };
+        Store.updateGame(g.id, { frames: v.game.frames, total: S.computeScore(v.game).total, cumulative: undefined, framesDerived: false });
         closeSheet(); toast('Score updated'); rerender();
       });
     });
@@ -208,7 +257,8 @@ function editScore(g) {
     const tgt = { cum: g.cumulative.map(String) };
     openSheet('<div id="egCum"></div>', sh => {
       BB.renderRunningTotals(sh.querySelector('#egCum'), { target: tgt, prefix: 'egc', title: '<h3>Edit running totals</h3>', onSave: data => {
-        Store.updateGame(g.id, data); closeSheet(); toast('Score updated'); rerender();
+        lastEditUndo = { id: g.id, snapshot: JSON.parse(JSON.stringify(g)) };
+        Store.updateGame(g.id, data); closeSheet(); toast('Score updated — totals recalculated'); rerender();
       } });
     });
   } else {
@@ -216,6 +266,7 @@ function editScore(g) {
       sh.querySelector('#egSave').addEventListener('click', () => {
         const t = parseInt(val('egTotal'), 10);
         if (isNaN(t) || t < 0 || t > 300) { toast('Enter a score from 0 to 300'); return; }
+        lastEditUndo = { id: g.id, snapshot: JSON.parse(JSON.stringify(g)) };
         Store.updateGame(g.id, { total: t }); closeSheet(); toast('Score updated'); rerender();
       });
     });
@@ -223,6 +274,6 @@ function editScore(g) {
 }
 
 BB.ACT = BB.ACT || {}; BB.ACT.history = BB.ACT.history || {};
-BB.ACT.history.calendarDay = a => { histFilter.view='list'; histFilter.preset='all'; const date=a.dataset.date; const gs=myGames().filter(g=>g.date===date); if(gs.length) show('game',{id:gs[0].id}); };
+BB.ACT.history.calendarDay = a => { histFilter.view='list'; histFilter.preset='all'; const date=a.dataset.date; const gs=myGames().filter(g=>g.date===date); if(gs.length) show('session',{id:gs[0].id}); };
 Object.assign(BB, { RANGES, inRange, typeMatch, typeOptions, rangeOptions, calendarHTML });
 })();

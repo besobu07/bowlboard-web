@@ -46,9 +46,16 @@ body {
   position: fixed; top: 0; left: 0; right: 0; z-index: 40;
   max-width: 560px; margin: 0 auto;
   padding: calc(10px + env(safe-area-inset-top, 0px)) 18px 10px;
-  background: rgba(14,14,14,.94);
-  -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px);
+  /* Keep the brand layer opaque and independent from the blurred lane backdrop.
+     This prevents iOS Safari from compositing the wordmark/gear through the
+     backdrop filter near the status-bar safe area. */
+  background: #0E0E0E;
+  -webkit-backdrop-filter: none; backdrop-filter: none;
   border-bottom: 1px solid var(--line);
+  transform: translateZ(0);
+  -webkit-transform: translateZ(0);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .app-logo {
@@ -710,8 +717,8 @@ h1, h2, h3, .screen-title, .btn, .kicker, .big-score, .stat-card b, .season-avg 
 .scan-status.good, .link-ok { color: var(--good); }
 /* header: wordmark left, gear right */
 .app-header { padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: 8px; }
-.app-wordmark { height: 46px; width: auto; display: block; }
-.hdr-gear { background: none; border: 0; color: var(--gold); width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer; border-radius: 12px; }
+.app-wordmark { height: 46px; width: auto; display: block; flex: none; image-rendering: auto; transform: translateZ(0); -webkit-transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
+.hdr-gear { background: none; border: 0; color: var(--gold); width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer; border-radius: 12px; flex: none; transform: translateZ(0); -webkit-transform: translateZ(0); }
 .hdr-gear .ic { width: 26px; height: 26px; stroke-width: 1.7; }
 /* tab bar: gold active item with an underline */
 .tabbar button { position: relative; }
@@ -943,3 +950,19 @@ a { color: var(--gold); }
 .cal-score { display:block; margin-top:5px; font-size:14px; font-weight:800; }
 .cal-meta { display:block; font-size:9px; color:var(--muted); margin-top:1px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 .season-wrap-card { margin-top:12px; }
+
+/* v1.2: session detail — make a bowling night feel like a first-class object. */
+.session-hero { background: linear-gradient(135deg, rgba(246,166,35,.16), rgba(26,22,17,.96) 62%); border: 1.5px solid rgba(246,166,35,.55); }
+.session-score { display:flex; align-items:flex-end; gap:14px; }
+.session-score .big-score { margin:0; }
+.session-score .session-series-label { color:var(--muted); font-size:12px; letter-spacing:2px; text-transform:uppercase; margin-bottom:8px; }
+.session-games { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:14px; }
+.session-game { background:rgba(14,14,14,.7); border:1px solid var(--line); border-radius:12px; padding:10px 6px; text-align:center; cursor:pointer; color:var(--text); }
+.session-game b { display:block; font-family:var(--font-head); font-size:26px; }
+.session-game small { color:var(--muted); font-size:11px; letter-spacing:1px; text-transform:uppercase; }
+.session-context { display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }
+.session-context .ctx { background:var(--card2); border-radius:12px; padding:10px; }
+.session-context small { display:block; color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:1px; }
+.session-context b { display:block; margin-top:2px; font-size:14px; }
+.session-actions { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+@media (max-width:380px) { .session-games { grid-template-columns:repeat(2,1fr); } }
