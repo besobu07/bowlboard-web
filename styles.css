@@ -52,10 +52,6 @@ body {
   background: #0E0E0E;
   -webkit-backdrop-filter: none; backdrop-filter: none;
   border-bottom: 1px solid var(--line);
-  transform: translateZ(0);
-  -webkit-transform: translateZ(0);
-  backface-visibility: hidden;
-  -webkit-backface-visibility: hidden;
 }
 .brand { display: flex; align-items: center; gap: 10px; }
 .app-logo {
@@ -717,9 +713,10 @@ h1, h2, h3, .screen-title, .btn, .kicker, .big-score, .stat-card b, .season-avg 
 .scan-status.good, .link-ok { color: var(--good); }
 /* header: wordmark left, gear right */
 .app-header { padding-top: calc(8px + env(safe-area-inset-top, 0px)); padding-bottom: 8px; }
-.app-wordmark { height: 46px; width: auto; display: block; flex: none; image-rendering: auto; transform: translateZ(0); -webkit-transform: translateZ(0); backface-visibility: hidden; -webkit-backface-visibility: hidden; }
-.hdr-gear { background: none; border: 0; color: var(--gold); width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer; border-radius: 12px; flex: none; transform: translateZ(0); -webkit-transform: translateZ(0); }
-.hdr-gear .ic { width: 26px; height: 26px; stroke-width: 1.7; }
+.app-wordmark { height: 40px; width: auto; display: block; flex: none; image-rendering: auto; object-fit: contain; object-position: left center; }
+.hdr-gear, .app-wordmark, .hdr-gear .ic { -webkit-transform: none; transform: none; -webkit-backface-visibility: visible; backface-visibility: visible; }
+.hdr-gear { background: none; border: 0; color: var(--gold); width: 40px; height: 40px; display: grid; place-items: center; cursor: pointer; border-radius: 12px; flex: none; }
+.hdr-gear .ic { width: 26px; height: 26px; stroke-width: 1.7; shape-rendering: geometricPrecision; }
 /* tab bar: gold active item with an underline */
 .tabbar button { position: relative; }
 .tabbar button.active { color: var(--gold); background: none; }
