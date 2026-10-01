@@ -43,9 +43,16 @@ function accountSheet() {
   if (st.signedIn) {
     openSheet('<h3>Your BowlBoard account</h3><div class="card compact"><strong>' + esc(st.name || 'BowlBoard bowler') + '</strong><div class="small muted mt4">' + esc(st.email) + '</div><div class="small muted mt4">' + (st.syncing ? 'Syncing…' : 'Cloud sync is on') + '</div></div>' +
       '<div class="row mt12"><button class="btn secondary grow" id="accountSync">Sync now</button><button class="btn danger grow" id="accountSignOut">Sign out</button></div>' +
+      '<button class="link-btn danger mt12" id="accountDelete">Delete account</button>' +
       '<p class="small muted mt12">Your score history syncs to your account. Score-sheet photos remain on this device during the beta.</p>', sh => {
         sh.querySelector('#accountSync').addEventListener('click', async () => { try { await Account.pushCloud(); toast('BowlBoard is synced'); closeSheet(); rerender(); } catch (e) { toast('Couldn’t sync right now'); } });
         sh.querySelector('#accountSignOut').addEventListener('click', async () => { try { await Account.signOut(); toast('Signed out — your local data stays on this device'); closeSheet(); rerender(); } catch (e) { toast(e.message || 'Couldn’t sign out'); } });
+        sh.querySelector('#accountDelete').addEventListener('click', async () => {
+          const ok = await ask('Delete your BowlBoard account? Your cloud bowling history will be deleted. Your local history on this device will stay here. This cannot be undone.');
+          if (!ok) return;
+          try { await Account.deleteAccount(); toast('Account deleted — your local history is still on this device'); closeSheet(); rerender(); }
+          catch (e) { toast(accountError(e)); }
+        });
       });
     return;
   }
@@ -75,7 +82,22 @@ function accountSheet() {
     });
 }
 
-BB.accountConflictSheet = function (cloud) {
+BB.accountPasswordResetSheet = function () {
+  openSheet('<h3>Choose a new password</h3><p class="muted">Your password-reset link is active. Choose a new password for your BowlBoard account.</p>' +
+    '<label class="field">New password<input type="password" id="acctNewPassword" autocomplete="new-password" placeholder="At least 6 characters"></label>' +
+    '<label class="field">Confirm password<input type="password" id="acctNewPassword2" autocomplete="new-password"></label>' +
+    '<button class="btn" id="acctSavePassword">Save new password</button>', sh => {
+      sh.querySelector('#acctSavePassword').addEventListener('click', async () => {
+        const a = sh.querySelector('#acctNewPassword').value, b = sh.querySelector('#acctNewPassword2').value;
+        if (a !== b) { toast('Passwords do not match'); return; }
+        try { await Account.updatePassword(a); toast('Password updated'); closeSheet(); rerender(); }
+        catch (e) { toast(accountError(e)); }
+      });
+    });
+};
+
+BB.accountConflictSheet = async function (cloud) {
+  if (!cloud && Account && Account.fetchCloud) { try { cloud = await Account.fetchCloud(); } catch (e) {} }
   const n = (cloud && cloud.data && cloud.data.games || []).length;
   openSheet('<h3>Choose your bowling history</h3><p class="muted">This device already has bowling data, and this account has a cloud copy. BowlBoard won’t silently overwrite either one.</p>' +
     '<div class="card"><strong>This device</strong><div class="small muted mt4">Your current games and settings</div></div><div class="card"><strong>Cloud copy</strong><div class="small muted mt4">' + n + ' game' + (n === 1 ? '' : 's') + ' · last updated ' + esc(cloud.updatedAt ? new Date(cloud.updatedAt).toLocaleString() : 'recently') + '</div></div>' +

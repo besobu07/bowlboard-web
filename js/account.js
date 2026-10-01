@@ -20,6 +20,8 @@
   let suspended = false;
   let timer = null;
   let lastCloudAt = null;
+  let knownRevision = null;
+  let dirty = false;
   let reconciling = false;
   const listeners = [];
 
@@ -30,7 +32,7 @@
   function status() {
     if (!configured) return { configured: false, signedIn: false, syncing: false, label: 'Accounts beta needs setup' };
     if (!user) return { configured: true, signedIn: false, syncing, label: 'Not signed in' };
-    return { configured: true, signedIn: true, syncing, email: email(), name: displayName(), cloudAt: lastCloudAt, label: syncing ? 'Syncing…' : 'Signed in' };
+    return { configured: true, signedIn: true, syncing, dirty, email: email(), name: displayName(), cloudAt: lastCloudAt, revision: knownRevision, label: syncing ? 'Syncing…' : (dirty ? 'Changes waiting to sync' : 'Signed in') };
   }
 
   async function signUp(address, password, name) {
@@ -54,12 +56,20 @@
     clearTimeout(timer); timer = null;
     const r = await client.auth.signOut();
     if (r.error) throw r.error;
-    user = null; lastCloudAt = null; emit();
+    user = null; lastCloudAt = null; knownRevision = null; dirty = false; emit();
   }
   async function resetPassword(address) {
     if (!client) throw new Error('Accounts beta is not connected yet.');
     const r = await client.auth.resetPasswordForEmail(address.trim(), { redirectTo: global.location.origin + global.location.pathname });
     if (r.error) throw r.error;
+  }
+
+  async function updatePassword(password) {
+    if (!client || !user) throw new Error('Password reset session is no longer active.');
+    if (!password || password.length < 6) throw new Error('Password must be at least 6 characters.');
+    const r = await client.auth.updateUser({ password });
+    if (r.error) throw r.error;
+    return r.data;
   }
 
   function payload() {
@@ -70,11 +80,12 @@
 
   async function fetchCloud() {
     if (!client || !user) return null;
-    const r = await client.from('bowlboard_data').select('data,updated_at').eq('user_id', user.id).maybeSingle();
+    const r = await client.from('bowlboard_data').select('data,updated_at,revision').eq('user_id', user.id).maybeSingle();
     if (r.error) throw r.error;
     if (!r.data) return null;
     lastCloudAt = r.data.updated_at || null;
-    return { data: r.data.data, updatedAt: r.data.updated_at };
+    knownRevision = Number.isFinite(Number(r.data.revision)) ? Number(r.data.revision) : 1;
+    return { data: r.data.data, updatedAt: r.data.updated_at, revision: knownRevision };
   }
 
   async function pushCloud() {
@@ -83,9 +94,44 @@
     try {
       const data = payload();
       const now = new Date().toISOString();
-      const r = await client.from('bowlboard_data').upsert({ user_id: user.id, data, updated_at: now }, { onConflict: 'user_id' });
+      // Optimistic concurrency: only update the revision this device last read.
+      // If another device has already changed the row, PostgREST returns no row
+      // and we surface a conflict instead of silently overwriting it.
+      if (knownRevision == null) {
+        const existing = await fetchCloud();
+        if (existing) {
+          dirty = true;
+          throw new Error('CLOUD_CONFLICT');
+        }
+        const ins = await client.from('bowlboard_data').insert({ user_id: user.id, data, updated_at: now, revision: 1 }).select('revision,updated_at').single();
+        if (ins.error) {
+          if (ins.error.code === '23505') {
+            await fetchCloud();
+            throw new Error('CLOUD_CONFLICT');
+          }
+          throw ins.error;
+        }
+        knownRevision = Number(ins.data.revision);
+        lastCloudAt = ins.data.updated_at || now;
+        dirty = false;
+        return true;
+      }
+      const nextRevision = knownRevision + 1;
+      const r = await client.from('bowlboard_data')
+        .update({ data, updated_at: now, revision: nextRevision })
+        .eq('user_id', user.id)
+        .eq('revision', knownRevision)
+        .select('revision,updated_at')
+        .maybeSingle();
       if (r.error) throw r.error;
-      lastCloudAt = now;
+      if (!r.data) {
+        dirty = true;
+        await fetchCloud();
+        throw new Error('CLOUD_CONFLICT');
+      }
+      knownRevision = Number(r.data.revision);
+      lastCloudAt = r.data.updated_at || now;
+      dirty = false;
       return true;
     } finally {
       syncing = false; emit();
@@ -96,7 +142,8 @@
     if (!user || suspended) return;
     clearTimeout(timer);
     timer = setTimeout(() => pushCloud().catch(err => {
-      global.BB && global.BB.toast && global.BB.toast('Cloud sync failed — your local data is safe.', 4000);
+      if (String(err && err.message) === 'CLOUD_CONFLICT' && global.BB && global.BB.accountConflictSheet) global.BB.accountConflictSheet();
+      else if (global.BB && global.BB.toast) global.BB.toast('Cloud sync failed — your local data is safe.', 4000);
       if (global.console) console.warn('[BowlBoard] cloud sync failed', err);
     }), 1400);
   }
@@ -111,6 +158,7 @@
       Store.replaceState ? Store.replaceState(m) : Object.keys(Store.state).forEach(k => delete Store.state[k]);
       if (!Store.replaceState) Object.assign(Store.state, m);
       Store.save();
+      dirty = false;
     } finally { suspended = false; }
   }
 
@@ -118,7 +166,8 @@
     const row = await fetchCloud();
     if (!row) return { found: false };
     await replaceLocal(row.data);
-    return { found: true, updatedAt: row.updatedAt };
+    dirty = false;
+    return { found: true, updatedAt: row.updatedAt, revision: row.revision };
   }
 
   async function reconcileAfterLogin() {
@@ -145,6 +194,18 @@
     }
   }
 
+  async function deleteAccount() {
+    if (!client || !user) throw new Error('No signed-in account.');
+    syncing = true; emit();
+    try {
+      const r = await client.rpc('delete_my_bowlboard_account');
+      if (r.error) throw r.error;
+      clearTimeout(timer); timer = null;
+      user = null; lastCloudAt = null; knownRevision = null; dirty = false;
+      return true;
+    } finally { syncing = false; emit(); }
+  }
+
   function init() {
     if (!client) { emit(); return; }
     client.auth.getSession().then(({ data }) => {
@@ -158,13 +219,16 @@
     client.auth.onAuthStateChange((event, session) => {
       user = session ? session.user : null;
       emit();
+      if (event === 'PASSWORD_RECOVERY' && user && global.BB && global.BB.accountPasswordResetSheet) {
+        setTimeout(() => global.BB.accountPasswordResetSheet(), 0);
+      }
     });
     const Store = global.BBStore;
-    if (Store) Store.onSave = () => { if (!suspended) schedulePush(); };
+    if (Store) Store.onSave = () => { if (!suspended && user) { dirty = true; emit(); schedulePush(); } };
   }
 
   const api = {
-    configured, client, onChange, status, signUp, signIn, signOut, resetPassword,
+    configured, client, onChange, status, signUp, signIn, signOut, resetPassword, updatePassword, deleteAccount,
     pushCloud, pullCloud, fetchCloud, reconcileAfterLogin, init,
     get user() { return user; },
     get email() { return email(); },
