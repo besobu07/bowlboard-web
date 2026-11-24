@@ -8,8 +8,8 @@ const { RENDER, ACT, esc, fmtDate, todayISO, icon, el, on, val, show, toast, ope
   MODE_LABEL, centerOptions, ballOptions, leagueOptions, patternList, lanesFields, readLanes, bindLanes, leagueName, scoredGames, scorecardHTML } = BB;
 
 const MODES = [
-  ['pins', 'pin', 'Pin by pin', 'Track every throw — every stat', ''],
-  ['photo', 'camera', 'Photo of the lane screen', 'Snap the screen when you finish, check it, done', ''],
+  ['pins', 'pin', 'Enter score', 'Count pins per roll or track exact pins', ''],
+  ['photo', 'camera', 'Scan Scoreboard', 'Photograph your final scoreboard and crop your row', ''],
   ['frames', 'grid', 'Running totals', 'Copy the score under each frame', ''],
   ['total', 'pencil', 'Total only', 'Just the final score — fastest', ''],
 ];

@@ -968,3 +968,78 @@ a { color: var(--gold); }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; padding: 4px; margin: 12px 0 14px; background: var(--surface-2, #171717); border: 1px solid var(--line, #2a2a2a); border-radius: 12px; }
 .segmented button { border: 0; background: transparent; color: var(--muted, #999); border-radius: 9px; padding: 9px 10px; font: inherit; font-weight: 700; cursor: pointer; }
 .segmented button.active { background: var(--surface, #242424); color: var(--text, #fff); }
+
+
+/* Redesign phase 1 — scoped to home quick actions and live roll entry. */
+.home-shortcuts { display:grid; gap:9px; margin:12px 0 16px; }
+.home-shortcut { display:flex; align-items:center; gap:12px; width:100%; min-height:60px; padding:12px 14px; text-align:left; color:#F0EAD6; background:#262421; border:1px solid #3A3A38; border-radius:14px; cursor:pointer; }
+.home-shortcut span { flex:1; min-width:0; }
+.home-shortcut b, .home-shortcut small { display:block; }
+.home-shortcut b { font-size:15px; }
+.home-shortcut small { font-size:12px; color:#BDB4A5; margin-top:2px; }
+.home-shortcut .ic { color:#E8A33D; width:21px; height:21px; }
+.home-shortcut:active { background:#3A3A38; }
+#screen-home .card.welcome #homeNew { background:#E8A33D; color:#1C1B18; box-shadow:none; }
+#screen-home .bowl-card { border-color:#E8A33D; }
+#screen-home .bowl-card .bc-title { font-size:clamp(25px,7vw,36px); color:#F0EAD6; letter-spacing:0; }
+.roll-switch { display:grid; grid-template-columns:1fr 1fr; gap:5px; padding:4px; background:#1C1B18; border:1px solid #3A3A38; border-radius:12px; margin:12px 0 8px; }
+.roll-switch button { font:inherit; font-size:14px; font-weight:700; min-height:44px; border:0; border-radius:9px; color:#F0EAD6; background:transparent; cursor:pointer; }
+.roll-switch button[aria-pressed="true"] { background:#E8A33D; color:#1C1B18; }
+.roll-switch button:disabled { opacity:.42; cursor:default; }
+.roll-note { margin:6px 0; }
+.roll-panel { background:#1C1B18; border:1px solid #3A3A38; border-radius:16px; padding:14px; margin:8px 0 12px; }
+.roll-heading { display:flex; justify-content:space-between; align-items:center; gap:8px; margin-bottom:8px; }
+.roll-heading b { display:block; font-size:21px; color:#F0EAD6; }
+.roll-heading small { display:block; color:#BDB4A5; font-size:12px; }
+.roll-heading > span { color:#E8A33D; font-size:13px; }
+.roll-keypad { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+.roll-keypad button { min-height:54px; border:1px solid #514C45; border-radius:11px; background:#302D28; color:#F0EAD6; font:inherit; font-size:24px; font-weight:700; cursor:pointer; }
+.roll-keypad button:disabled { opacity:.32; cursor:default; }
+.roll-keypad button.roll-clear { background:#E8A33D; border-color:#E8A33D; color:#1C1B18; }
+.roll-keypad button:active:not(:disabled) { transform:scale(.97); }
+.roll-foul { display:block; width:100%; min-height:44px; color:#F0EAD6; background:none; border:1px solid #514C45; border-radius:10px; font:inherit; font-weight:600; margin-top:8px; cursor:pointer; }
+.home-shortcut:focus-visible,.roll-switch button:focus-visible,.roll-keypad button:focus-visible,.roll-foul:focus-visible { outline:2px solid #E8A33D; outline-offset:2px; }
+
+
+/* Approved redesign: warm ink, paper and amber. Scoped to the main screens. */
+:root { --bb-ink:#1C1B18; --bb-paper:#F0EAD6; --bb-amber:#E8A33D; --bb-red:#C1443C; --bb-graphite:#3A3A38; }
+#screen-home,#screen-entry,#screen-history,#screen-stats,#screen-photo { --card:#24221e; --card2:#302d28; --line:#48433b; --text:var(--bb-paper); --muted:#BDB4A5; --gold:var(--bb-amber); --cyan:var(--bb-amber); --amber:var(--bb-amber); --grad:linear-gradient(135deg,#efb453,#E8A33D); }
+#screen-home .home-brand { display:grid; justify-items:center; gap:4px; padding:16px 0 8px; }
+#screen-home .home-brand > img:first-child { width:86px; height:86px; object-fit:contain; border-radius:19px; }
+#screen-home .home-brand-wordmark { width:min(220px,75%); height:auto; }
+#screen-home .home-brand p { font-size:11px; letter-spacing:2.6px; text-transform:uppercase; font-weight:700; color:var(--bb-paper); margin:0; }
+#screen-home .card.welcome { background:rgba(28,27,24,.9); border-color:#48433b; }
+#screen-home .bowl-card { background:#E8A33D; color:#1C1B18; border:0; box-shadow:0 5px 16px rgba(0,0,0,.25); }
+#screen-home .bowl-card .bc-title,#screen-home .bowl-card .bc-sub { color:#1C1B18; }
+#screen-home .bowl-card .bc-sub { font-size:13px; }
+#screen-home .bc-go { color:#F0EAD6; background:#1C1B18; box-shadow:none; }
+#screen-home .bc-modes { border-color:rgba(28,27,24,.36); }
+#screen-home .bc-modes button,#screen-home .bc-modes i { color:#1C1B18; }
+#screen-home .home-shortcut { min-height:64px; }
+#screen-home .home-shortcut > .ic:last-child { width:16px; height:16px; color:#BDB4A5; }
+#screen-entry .score-line { padding:12px; border:1px solid #48433b; background:#24221e; border-radius:12px; margin:8px 0; }
+#screen-entry .score-line .now b { font-size:32px; color:var(--bb-amber); }
+#screen-entry .scorecard { --paper:#F0EAD6; }
+#screen-entry .scorecard .frame.cur { box-shadow:inset 0 -4px 0 #C27B15; }
+#screen-history .history-summary { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; padding:12px 6px; margin:10px 0 14px; border:1px solid #48433b; border-radius:14px; background:#24221e; text-align:center; }
+.history-summary b { display:block; font-size:24px; color:var(--bb-amber); font-variant-numeric:tabular-nums; }
+.history-summary small { display:block; font-size:11px; color:#BDB4A5; }
+#screen-history .series-card { border-color:#48433b; border-radius:15px; padding:14px; }
+#screen-history .series-card .score { color:#E8A33D; background:none; -webkit-text-fill-color:currentColor; }
+#screen-history .series-card .score small { color:#BDB4A5; -webkit-text-fill-color:currentColor; }
+#screen-history .filters,#screen-stats .filters { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:8px; }
+#screen-history .filters select,#screen-stats .filters select { width:100%; min-width:0; }
+#screen-stats .stats-hero { padding:22px 16px; text-align:center; background:#24221e; }
+.stats-hero .kicker { justify-content:center; color:#BDB4A5; }
+.stats-average { color:var(--bb-amber); font-family:var(--font-head); font-size:64px; font-weight:700; line-height:1.15; font-variant-numeric:tabular-nums; }
+.stats-hero em { display:block; margin:2px 0 5px; }
+.stats-records .stat-card b { color:var(--bb-paper); background:none; -webkit-text-fill-color:currentColor; }
+#screen-stats .stats-trend h3 { font-size:16px; }
+.scan-example { margin:12px 0; }
+.scan-example img { display:block; width:100%; border-radius:12px; }
+.scan-example figcaption { font-size:12px; color:#BDB4A5; text-align:center; margin-top:6px; }
+#screen-photo .crop-box { border-color:var(--bb-amber); }
+#screen-photo .crop-wrap.cropping { outline-color:var(--bb-amber); }
+#screen-home .btn:not(.secondary):not(.danger),#screen-entry .btn:not(.secondary):not(.danger),#screen-photo .btn:not(.secondary):not(.danger),#screen-history .btn:not(.secondary):not(.danger) { color:#1C1B18; }
+@media (max-width:360px) { #screen-home .bowl-card .bc-title { font-size:24px; } .stats-average { font-size:56px; } }
+@media (prefers-reduced-motion:reduce) { #screen-entry .roll-keypad button:active { transform:none; } }

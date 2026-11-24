@@ -1,7 +1,7 @@
 /* BowlBoard offline support: keeps the app itself on the phone so it opens at the
  * lanes with no signal. Your games are stored separately (localStorage/IndexedDB)
  * and are never touched here. build.py stamps VERSION so each deploy refreshes. */
-const VERSION = '949f367385';
+const VERSION = 'redesign-phase1-02';
 const CACHE = 'bowlboard-' + VERSION;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
@@ -44,7 +44,7 @@ const ASSETS = [
   './js/ui/league-scores.js',
   './js/ui/league-import.js',
   './js/ui/boot.js',
-  './wordmark.png', './app-icon.png', './lane.jpg', './share-logo.png', './fonts/poppins-medium.woff', './fonts/poppins-bold.woff', './fonts/inter-var.woff', './fonts/OFL-Poppins.txt', './fonts/OFL-Inter.txt', './favicon.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png',
+  './scan-example.svg', './wordmark.png', './app-icon.png', './lane.jpg', './share-logo.png', './fonts/poppins-medium.woff', './fonts/poppins-bold.woff', './fonts/inter-var.woff', './fonts/OFL-Poppins.txt', './fonts/OFL-Inter.txt', './favicon.png', './apple-touch-icon.png', './icon-192.png', './icon-512.png', './icon-maskable-512.png',
 ];
 
 self.addEventListener('install', e => {
