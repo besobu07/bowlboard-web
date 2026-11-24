@@ -1,7 +1,7 @@
 /* BowlBoard offline support: keeps the app itself on the phone so it opens at the
  * lanes with no signal. Your games are stored separately (localStorage/IndexedDB)
  * and are never touched here. tools/stamp-sw.js stamps VERSION (a fingerprint of the cached files); `npm test` fails if it is stale. */
-const VERSION = '49a4cef2f5';
+const VERSION = '628d6acbe4';
 const CACHE = 'bowlboard-' + VERSION;
 const ASSETS = [
   './', './index.html', './styles.css', './manifest.webmanifest',
