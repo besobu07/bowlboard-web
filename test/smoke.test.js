@@ -38,6 +38,8 @@ const check = (c, name, extra) => { if (c) pass++; else { fail++; console.log('F
   await page.goto(base + 'index.html');
   await page.waitForSelector('.tabbar');
   check(await page.title() === 'BowlBoard', 'the page has its title');
+  check(await page.evaluate(() => typeof window.supabase === 'object' && typeof window.supabase.createClient === 'function'), 'supabase-js is served from the app itself (no CDN needed)');
+  check(await page.evaluate(() => { const t = [...document.scripts].find(x => /tesseract/.test(x.src)); return !!(t && /^sha384-/.test(t.integrity) && /@5\.\d+\.\d+\//.test(t.src)); }), 'the text reader is pinned to an exact version with an integrity hash');
   for (const t of ['home', 'history', 'stats', 'league', 'more']) check(await page.$('[data-nav="' + t + '"]') !== null, 'tab: ' + t);
   check(await page.evaluate(() => !!(window.BBGlyphs && window.BBGlyphModel && window.BBScore && window.BBScan)), 'engines are loaded, including the built-in glyph reader');
 
