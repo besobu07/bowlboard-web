@@ -43,7 +43,7 @@ function renderPinEntry(prevTotal, pop) {
   }
   el('deckWrap').innerHTML = done
     ? '<div class="finish-bar"><button class="btn secondary small-btn" data-act="undo" aria-label="Undo">' + icon('undo') + '</button><button class="btn grow" data-act="save">Save game — ' + sc.total + '</button></div>'
-    : deckHTML(game);
+    : rollControlsHTML(game);
 }
 // Where the last ball landed, and what it was (X, /, or a count).
 function lastBall(game) {
@@ -71,6 +71,19 @@ function updateThrowButton() {
   b.textContent = 'Throw · ' + n + ' pin' + (n === 1 ? '' : 's');
 }
 ACT.entry = {
+  inputMode: a => {
+    const entry = BB.entry;
+    if (a.dataset.input === 'exact' && !S.standingPins(entry.game)) return;
+    entry.inputMode = a.dataset.input;
+    entry.sel = new Set();
+    renderPinEntry();
+  },
+  count: a => {
+    const game = BB.entry.game, n = Number(a.dataset.count);
+    if (!Number.isInteger(n) || n < 0 || n > S.legalPins(game) || S.isComplete(game)) return;
+    const result = n === 0 ? S.recordThrow(game, []) : n === S.legalPins(game) ? S.recordClear(game) : S.recordBall(game, n);
+    recordAndRedraw(result);
+  },
   pin: a => { // toggle in place — no redraw
     const entry = BB.entry;
     const n = +a.dataset.pin;
@@ -96,6 +109,26 @@ ACT.entry = {
   },
   save: () => { const e = BB.entry; BB.saveGame(Object.assign(BB.gameBase(e.setup), { frames: S.clone(e.game).frames, total: S.computeScore(e.game).total })); },
 };
+
+// Count entry records only a count, never invents the identities of fallen pins.
+function rollControlsHTML(game) {
+  const entry = BB.entry, known = S.standingPins(game) !== null;
+  const exact = entry.inputMode === 'exact' && known;
+  const max = S.legalPins(game), frame = S.currentFrame(game);
+  const toggle = '<div class="roll-switch" role="group" aria-label="Roll entry style">' +
+    '<button type="button" data-act="inputMode" data-input="count" aria-pressed="' + !exact + '">Pin count</button>' +
+    '<button type="button" data-act="inputMode" data-input="exact" aria-pressed="' + exact + '"' + (known ? '' : ' disabled') + '>Exact pins</button></div>' +
+    (known ? '' : '<p class="small muted roll-note">Exact pin positions are unknown for this rack. Available again on the next fresh rack.</p>');
+  if (exact) return toggle + deckHTML(game);
+  let h = toggle + '<div class="roll-panel"><div class="roll-heading"><div><b>Enter Score</b><small>Frame ' + (frame + 1) + ' · Ball ' + (game.frames[frame].balls.length + 1) + '</small></div><span>' + max + ' standing</span></div>' +
+    '<p class="small muted mt0" id="countHint">Select the number of pins knocked down.</p><div class="roll-keypad" role="group" aria-labelledby="countHint">';
+  for (let n = 1; n <= 9; n++) h += '<button type="button" data-act="count" data-count="' + n + '"' + (n > max ? ' disabled' : '') + '>' + n + '</button>';
+  h += '<button type="button" data-act="count" data-count="0" aria-label="Zero pins">0</button>' +
+    '<button type="button" class="roll-clear" data-act="clear" aria-label="' + (S.freshRack(game) ? 'Strike' : 'Spare') + '">' + (S.freshRack(game) ? 'X' : '/') + '</button>' +
+    '<button type="button" data-act="undo" aria-label="Undo last roll">' + icon('undo') + '</button></div>' +
+    '<button type="button" class="roll-foul" data-act="foul">Foul (F)</button></div>';
+  return h;
+}
 
 const PIN_ROWS = [[7, 8, 9, 10], [4, 5, 6], [2, 3], [1]];
 function deckHTML(game) {

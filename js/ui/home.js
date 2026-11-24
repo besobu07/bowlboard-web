@@ -57,6 +57,13 @@ function sparkline(games) {
     '<circle cx="' + last[0].toFixed(1) + '" cy="' + last[1].toFixed(1) + '" r="4" fill="#E67E22"/></svg>';
 }
 
+function homeShortcuts() {
+  return '<div class="home-shortcuts" aria-label="Quick actions">' +
+    '<button type="button" class="home-shortcut scan-shortcut" data-act="bowlMode" data-mode="photo">' + icon('camera') + '<span><b>Scan Scoreboard</b><small>Photograph the lane screen</small></span>' + icon('chevron') + '</button>' +
+    '<button type="button" class="home-shortcut" data-act="go" data-to="history"><span><b>Game History</b><small>Every game and session</small></span>' + icon('chevron') + '</button>' +
+    '<button type="button" class="home-shortcut" data-act="go" data-to="stats">' + icon('stats') + '<span><b>My Stats</b><small>Track your progress</small></span>' + icon('chevron') + '</button></div>';
+}
+
 RENDER.home = function () {
   const root = screenRoot();
   const today = todayISO();
@@ -72,9 +79,9 @@ RENDER.home = function () {
     h += '<div class="card welcome"><img class="welcome-icon" src="app-icon.png" alt=""><img class="welcome-logo" src="wordmark.png" alt="BowlBoard">' +
       '<div class="tagline">Built for Bowlers</div>' +
       '<p class="muted">Log every game — pin by pin, from a photo of the lane screen, or just the score. BowlBoard keeps your average, stats and league standings.</p>' +
-      '<button class="btn" id="homeNew">' + icon('pin') + 'Bowl a game</button>' +
+      '<button class="btn" id="homeNew">' + icon('pin') + 'New Game</button>' +
       '<button class="btn secondary mt8" data-act="go" data-to="league">' + icon('pins') + 'I bowl in a league</button>' +
-      (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Explore a sample season</button>') + '</div>';
+      (Sample.has(Store) ? '' : '<button class="link-btn mt8" id="homeSamples">Explore a sample season</button>') + '</div>' + homeShortcuts();
     root.innerHTML = h;
     bind(null);
     return;
@@ -89,12 +96,14 @@ RENDER.home = function () {
   const cont = latest && latest.date === today && latest.games.length < 6;
   h += '<div class="bowl-card" data-act="bowlCard">' +
     '<img class="bc-mark" src="app-icon.png" alt="">' +
-    '<div class="bc-body"><div class="bc-title">Bowl</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
+    '<div class="bc-body"><div class="bc-title">' + (cont ? 'Continue Series' : 'New Game') + '</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
     '</div>' +
     '<button class="bc-go" id="' + (cont ? 'homeContinue' : 'homeNew') + '" type="button" aria-label="' + (cont ? 'Continue tonight’s series' : 'Bowl: start a new game') + '">' + icon('arrow') + '</button>' +
     // the three ways to score get their own full-width row so they never wrap on narrow phones
-    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Pin by pin</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Photo</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Just the score</button></div></div>';
+    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Pin by pin</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Scan</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Just the score</button></div></div>';
   if (cont) h += '<button class="link-btn bc-alt" id="homeNew">Start a separate series instead</button>';
+
+  h += homeShortcuts();
 
   // League: tonight right under Bowl; otherwise quietly further down
   const leagues = myLeagues();

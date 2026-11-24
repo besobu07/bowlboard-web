@@ -358,8 +358,8 @@ RENDER.photo = function () {
     h += '<div class="row"><span class="small muted grow">' + icon('screen') + ' No photo — typing it in from the screen.</span><label class="btn secondary small-btn" for="photoPick">' + icon('camera') + 'Add a photo</label></div>' +
       '<input type="file" id="photoPick" accept="image/*" hidden>';
   } else if (!photo.img) {
-    h += '<p class="mt0">' + icon('screen') + ' <b>Photo of the lane screen</b></p>' +
-      '<ul class="tips"><li>Take it when your game is finished.</li><li>Fill the photo with your row — your name and all 10 frames.</li><li>Tilt a little to dodge glare, and hold still for a second.</li></ul>' +
+    h += '<p class="mt0">' + icon('screen') + ' <b>Scan your final scoreboard</b></p>' +
+      '<ul class="tips"><li>Take it when your game is finished.</li><li>Photograph the electronic lane scoreboard, even if it shows several players.</li><li>Crop to just your row, including all 10 frames and the final total.</li><li>Tilt a little to dodge glare, and hold still for a second.</li></ul>' +
       (EMBED ? '<p class="small muted">Here you can keep the photo with the game and type the frames in; reading the screen works in the installed app.</p>' : '<p class="small muted">BowlBoard drafts the frames from the photo. You check every one before it’s saved.</p>');
     // Two pickers: "capture" opens the camera straight away (and on an iPhone leaves no way to pick from the library),
     // so choosing an existing photo is its own button, without it.
@@ -371,8 +371,8 @@ RENDER.photo = function () {
     const v = viewOf(), step1 = photo.cropping && !photo.zoom, bx = photo.crop && !step1 ? inView(photo.crop, v.r) : null;
     h += '<div class="crop-wrap' + (photo.cropping ? ' cropping' : '') + '" id="cropWrap"><img class="photo-preview" src="' + Store.safeImage(v.img) + '" alt="lane screen photo">' +
       (bx ? '<div class="crop-box" style="left:' + bx.x * 100 + '%;top:' + bx.y * 100 + '%;width:' + bx.w * 100 + '%;height:' + bx.h * 100 + '%"></div>' : '') + '</div>';
-    h += '<div class="small muted" id="cropHint">' + (step1 ? '<b>Step 1 of 2.</b> Drag a box around the whole scoreboard to zoom in.' : photo.cropping ? '<b>Step 2 of 2.</b> Now drag a box around your row' + (photo.crop ? ', then tap Done.' : '.')
-      : photo.crop ? 'Reading only the boxed area.' : 'Tip: box in just your row for a cleaner read.') + '</div>';
+    h += '<div class="small muted" id="cropHint">' + (step1 ? '<b>Step 1 of 2.</b> Drag a box around the electronic scoreboard to zoom in.' : photo.cropping ? '<b>Step 2 of 2.</b> Now drag a narrow box around only your row (all 10 frames and total)' + (photo.crop ? ', then tap Done.' : '.')
+      : photo.crop ? 'Only the selected player row will be read.' : 'Multiple players? Box in only your own row before scanning.') + '</div>';
     if (!EMBED) h += '<button class="btn mt8" id="scanBtn"' + (photo.scanning || (photo.cropping && !photo.crop) ? ' disabled' : '') + '>' + icon('sparkle') + (photo.scanning ? 'Reading…' : photo.scanned ? 'Read it again' : 'Read the screen') + '</button>';
     h += '<div class="row wrap mt8 photo-tools">' +
       (step1 ? '<button class="btn secondary small-btn" id="cropSkip">My row fills the photo</button>'
