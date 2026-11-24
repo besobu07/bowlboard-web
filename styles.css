@@ -1043,3 +1043,41 @@ a { color: var(--gold); }
 #screen-home .btn:not(.secondary):not(.danger),#screen-entry .btn:not(.secondary):not(.danger),#screen-photo .btn:not(.secondary):not(.danger),#screen-history .btn:not(.secondary):not(.danger) { color:#1C1B18; }
 @media (max-width:360px) { #screen-home .bowl-card .bc-title { font-size:24px; } .stats-average { font-size:56px; } }
 @media (prefers-reduced-motion:reduce) { #screen-entry .roll-keypad button:active { transform:none; } }
+
+
+/* Redesign: standalone vector branding and compact two-row live scorecard. */
+.app-header .app-wordmark { height:38px; width:auto; max-width:210px; }
+#screen-home .home-brand { padding:12px 0 6px; gap:0; }
+#screen-home .home-brand > img:first-child { width:103px; height:103px; border-radius:0; }
+#screen-home .home-brand-wordmark { width:min(240px,78%); height:auto; }
+#screen-home .home-brand p { margin-top:4px; letter-spacing:2.5px; }
+#screen-home .card.welcome .welcome-icon { width:110px; height:110px; box-shadow:none; border-radius:0; margin-bottom:0; }
+#screen-home .card.welcome .welcome-logo { width:min(245px,90%); }
+#screen-home .card.welcome .tagline { font-size:12px; color:#F0EAD6; }
+#screen-home .bowl-card { padding:13px 14px; min-height:76px; flex-wrap:nowrap; border-radius:18px; }
+#screen-home .bowl-card .bc-mark { width:44px; height:44px; box-shadow:none; border-radius:0; }
+#screen-home .bowl-card .bc-title { font-size:clamp(21px,6vw,29px); }
+#screen-home .bc-go { width:40px; height:40px; }
+#screen-home .bc-go .ic { width:22px; height:22px; }
+#screen-home .home-shortcuts { gap:9px; margin-top:10px; }
+#screen-home .home-shortcut { border-radius:18px; background:#25231f; min-height:58px; }
+#screen-home .home-shortcut b { font-size:16px; }
+#screen-home .home-shortcut small { font-size:11px; }
+#screen-entry #scoreWrap .scorecard { display:grid; grid-template-columns:repeat(5,minmax(0,1fr)); grid-auto-rows:minmax(62px,auto); gap:5px; border:0; background:transparent; color:#F0EAD6; box-shadow:none; overflow:visible; }
+#screen-entry #scoreWrap .scorecard .frame { min-height:62px; border:1px solid #48433b; border-radius:8px; background:#24221e; overflow:hidden; }
+#screen-entry #scoreWrap .scorecard .fnum { background:#302d28; color:#BDB4A5; border-bottom:1px solid #48433b; font-size:11px; line-height:17px; }
+#screen-entry #scoreWrap .scorecard .balls { height:23px; }
+#screen-entry #scoreWrap .scorecard .balls span { border-color:#48433b; font-size:14px; }
+#screen-entry #scoreWrap .scorecard .cum { font-size:16px; }
+#screen-entry #scoreWrap .scorecard .frame.cur { border-color:#E8A33D; box-shadow:inset 0 0 0 1px #E8A33D; background:#30281b; }
+#screen-entry #scoreWrap .scorecard .frame.cur .fnum { background:#E8A33D; color:#1C1B18; }
+#screen-entry #scoreWrap .scorecard .balls span.here { background:rgba(232,163,61,.25); }
+#screen-entry #scoreWrap .scorecard .balls span.here::before { background:#E8A33D; }
+#screen-entry #scoreWrap .scorecard .cum .pend { color:#BDB4A5; }
+#screen-entry #scoreWrap .scorecard .balls span.foul { color:#ff9287; }
+#screen-entry #scoreWrap .score-line { padding:7px 12px; }
+#screen-entry .roll-keypad button { min-height:48px; }
+#screen-entry .roll-heading b { font-size:19px; }
+#screen-entry .roll-panel { padding:12px; }
+#screen-entry .roll-switch { margin:8px 0 6px; }
+@media(max-width:360px) { #screen-entry #scoreWrap .scorecard { gap:3px; } #screen-entry #scoreWrap .scorecard .balls span { font-size:12px; } #screen-home .bowl-card .bc-mark { width:36px;height:36px; } }

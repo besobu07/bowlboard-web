@@ -76,7 +76,7 @@ RENDER.home = function () {
       '<button class="btn" data-act="go" data-to="backup">Restore my data</button><button class="btn secondary mt8" id="recoverFresh">Start fresh instead</button></div>';
   }
   if (!st.games.length && !st.leagues.length) {
-    h += '<div class="card welcome"><img class="welcome-icon" src="app-icon.png" alt=""><img class="welcome-logo" src="wordmark.png" alt="BowlBoard">' +
+    h += '<div class="card welcome"><img class="welcome-icon" src="brand-mark.svg" alt=""><img class="welcome-logo" src="brand-wordmark.svg" alt="BowlBoard">' +
       '<div class="tagline">Built for Bowlers</div>' +
       '<p class="muted">Track every game. See your progress. Make every frame count.</p>' +
       '<button class="btn" id="homeNew">' + icon('pin') + 'New Game</button>' +
@@ -88,19 +88,18 @@ RENDER.home = function () {
   }
 
   const name = firstName();
-  h += '<div class="home-brand"><img src="app-icon.png" alt=""><img class="home-brand-wordmark" src="wordmark.png" alt="BowlBoard"><p>Built for Bowlers</p></div><div class="greet"><h2>' + greeting() + (name ? ', ' + esc(name) : '') + '</h2></div>';
+  h += '<div class="home-brand"><img src="brand-mark.svg" alt=""><img class="home-brand-wordmark" src="brand-wordmark.svg" alt="BowlBoard"><p>Built for Bowlers</p></div><div class="greet"><h2>' + greeting() + (name ? ', ' + esc(name) : '') + '</h2></div>';
 
   // BOWL: the hero action
   const own = Store.allSeries();
   const latest = own[0];
   const cont = latest && latest.date === today && latest.games.length < 6;
   h += '<div class="bowl-card" data-act="bowlCard">' +
-    '<img class="bc-mark" src="app-icon.png" alt="">' +
+    '<img class="bc-mark" src="brand-mark.svg" alt="">' +
     '<div class="bc-body"><div class="bc-title">' + (cont ? 'Continue Series' : 'New Game') + '</div><div class="bc-sub">' + (cont ? 'Continue tonight’s series · game ' + (latest.games.length + 1) : 'Start a new game') + '</div>' +
     '</div>' +
     '<button class="bc-go" id="' + (cont ? 'homeContinue' : 'homeNew') + '" type="button" aria-label="' + (cont ? 'Continue tonight’s series' : 'Bowl: start a new game') + '">' + icon('arrow') + '</button>' +
-    // the three ways to score get their own full-width row so they never wrap on narrow phones
-    '<div class="bc-modes"><button type="button" data-act="bowlMode" data-mode="pins">Enter score</button><i>•</i><button type="button" data-act="bowlMode" data-mode="photo">Scan</button><i>•</i><button type="button" data-act="bowlMode" data-mode="total">Just the score</button></div></div>';
+    '</div>';
   if (cont) h += '<button class="link-btn bc-alt" id="homeNew">Start a separate series instead</button>';
 
   h += homeShortcuts();
