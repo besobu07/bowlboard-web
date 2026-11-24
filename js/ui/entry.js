@@ -34,7 +34,7 @@ function renderPinEntry(prevTotal, pop) {
   const now = done ? sc.total : sc.runningTotal;
   el('scoreWrap').innerHTML = scorecardHTML(game, cur, { curBall: done ? -1 : game.frames[cur].balls.length }) +
     '<div class="score-line" aria-live="polite"><div class="now">Score <b id="scoreNow">' + now + '</b> ' + (done ? '' : pendingNote(game)) + '</div>' +
-    '<div class="max">' + (done ? 'Final' : 'Max ' + S.maxPossible(game)) + '</div></div>';
+    '<div class="max">' + (done ? 'Final' : 'Maximum Score Possible: ' + S.maxPossible(game)) + '</div></div>';
   if (prevTotal != null && prevTotal !== now) countUp(el('scoreNow'), prevTotal, now);
   if (pop && !reduceMotion()) {
     const f = el('frameGrid').querySelectorAll('.frame')[pop.i];
