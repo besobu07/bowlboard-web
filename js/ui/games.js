@@ -54,14 +54,15 @@ function calendarHTML(games, month) {
 
 RENDER.history = function () {
   const root = screenRoot();
-  let h = '<div class="head-row"><h2 class="screen-title">Games</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '</div><div class="filters">';
+  const quickTypes = [['','All'],['__league','League'],['__practice','Open / practice']];
+  let h = '<div class="head-row"><h2 class="screen-title">Games</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '<button type="button" class="link-btn" id="histNew" aria-label="New game">+ New</button></div><div class="quick-filters" role="group" aria-label="Game type">' + quickTypes.map(([id,label]) => '<button type="button" data-act="histType" data-type="' + id + '" aria-pressed="' + (histFilter.type === id) + '">' + label + '</button>').join('') + '</div><div class="filters">';
   h += '<select id="hfPreset" aria-label="Date range">' + rangeOptions(histFilter.preset) + '</select>';
   h += '<select id="hfType" aria-label="Practice or league">' + typeOptions(histFilter.type) + '</select>';
   h += '<select id="hfCenter" aria-label="Center"><option value="">All centers</option>' +
     Store.state.centers.map(a => '<option value="' + a.id + '"' + (histFilter.center === a.id ? ' selected' : '') + '>' + esc(a.name) + '</option>').join('') + '</select>';
   h += '<select id="hfBall" aria-label="Ball"><option value="">All balls</option><option value="__house"' + (histFilter.ball === '__house' ? ' selected' : '') + '>House ball</option>' +
     Store.state.balls.map(b => '<option value="' + b.id + '"' + (histFilter.ball === b.id ? ' selected' : '') + '>' + esc(b.brand + ' ' + b.name) + '</option>').join('') + '</select>';
-  h += '</div><div class="calendar-toggle"><button class="btn ' + (histFilter.view === 'list' ? '' : 'secondary') + '" id="histListBtn">List</button><button class="btn ' + (histFilter.view === 'calendar' ? '' : 'secondary') + '" id="histCalBtn">Calendar</button></div><div id="histList">';
+  h += '</div><div class="calendar-toggle"><button class="btn ' + (histFilter.view === 'list' ? '' : 'secondary') + '" id="histListBtn">Sessions</button><button class="btn ' + (histFilter.view === 'games' ? '' : 'secondary') + '" id="histGamesBtn">Games</button><button class="btn ' + (histFilter.view === 'calendar' ? '' : 'secondary') + '" id="histCalBtn">Calendar</button></div><div id="histList">';
   const games = myGames().filter(g => inRange(g.date, histFilter.preset) && typeMatch(g, histFilter.type) &&
     (!histFilter.center || g.centerId === histFilter.center) &&
     (!histFilter.ball || (!g.sheet && (histFilter.ball === '__house' ? !g.ballId : g.ballId === histFilter.ball))));
@@ -69,6 +70,7 @@ RENDER.history = function () {
   const scored = games.filter(g => Number.isFinite(g.total));
   if (scored.length) h += '<div class="history-summary"><div><b>' + scored.length + '</b><small>Games</small></div><div><b>' + Math.floor(scored.reduce((sum,g) => sum + g.total, 0) / scored.length) + '</b><small>Average</small></div><div><b>' + Math.max(...scored.map(g => g.total)) + '</b><small>High game</small></div></div>';
   if (histFilter.view === 'calendar') h += calendarHTML(games, histFilter.month);
+  else if (histFilter.view === 'games' && games.length) h += I.chrono(games).slice().reverse().map(g => '<button class="history-game-row" type="button" data-act="game" data-id="' + esc(g.id) + '"><img src="brand-mark.svg" alt=""><span><b>' + esc(g.leagueId ? leagueName(g.leagueId) || 'League' : 'Open / practice') + '</b><small>' + esc(fmtDate(g.date)) + ' · Game ' + (g.gameNo || 1) + '</small></span><strong>' + (g.total == null ? '—' : g.total) + '</strong>' + icon('chevron') + '</button>').join('');
   else h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.<br><button class="btn small-btn secondary mt8" id="hfImport">' + icon('upload') + 'Import scores from a file</button>') + '</div>';
   h += '</div>';
   root.innerHTML = h;
@@ -76,6 +78,8 @@ RENDER.history = function () {
   on('hfType', 'change', e => { histFilter.type = e.target.value; RENDER.history(); });
   on('hfCenter', 'change', e => { histFilter.center = e.target.value; RENDER.history(); });
   on('hfBall', 'change', e => { histFilter.ball = e.target.value; RENDER.history(); });
+  on('histNew', 'click', () => BB.newGame());
+  on('histGamesBtn', 'click', () => { histFilter.view = 'games'; RENDER.history(); });
   on('histListBtn', 'click', () => { histFilter.view = 'list'; RENDER.history(); });
   on('histCalBtn', 'click', () => { histFilter.view = 'calendar'; histFilter.month = histFilter.month || monthISO(new Date()); RENDER.history(); });
   on('calPrev', 'click', () => { const d = new Date((histFilter.month || monthISO(new Date()))+'-01T12:00:00'); d.setMonth(d.getMonth()-1); histFilter.month=monthISO(d); RENDER.history(); });
@@ -276,6 +280,7 @@ function editScore(g) {
 }
 
 BB.ACT = BB.ACT || {}; BB.ACT.history = BB.ACT.history || {};
+BB.ACT.history.histType = a => { histFilter.type = a.dataset.type; RENDER.history(); };
 BB.ACT.history.calendarDay = a => { histFilter.view='list'; histFilter.preset='all'; const date=a.dataset.date; const gs=myGames().filter(g=>g.date===date); if(gs.length) show('session',{id:gs[0].id}); };
 Object.assign(BB, { RANGES, inRange, typeMatch, typeOptions, rangeOptions, calendarHTML });
 })();

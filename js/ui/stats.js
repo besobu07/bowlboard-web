@@ -7,7 +7,12 @@ const BB = window.BB;
 const S = window.BBScore, Store = window.BBStore, LG = window.BBLeague, I = window.BBInsights;
 const { RENDER, esc, fmtDate, todayISO, icon, el, on, show, screenRoot, backLink, avgFloor, pct, plural, myGames, scoredGames, highSeries } = BB;
 
-const statFilter = { preset: 'all', type: '' };
+const statFilter = { preset: 'all', type: '', recent: 0 };
+function statsScope(all, preset, type, recent) {
+  const filtered = scoredGames(all.filter(g => BB.inRange(g.date, preset) && BB.typeMatch(g, type)));
+  return recent ? I.chrono(filtered).slice(-recent) : filtered;
+}
+BB.statsScope = statsScope;
 const card = (v, label, sub) => '<div class="stat-card"><b>' + v + '</b><span>' + label + '</span>' + (sub || '') + '</div>';
 const pctCell = v => (v == null ? '—' : v + '%');
 
@@ -24,7 +29,7 @@ function groupTable(title, rows, label, opts) {
 RENDER.stats = function () {
   const root = screenRoot();
   const all = myGames();
-  const games = scoredGames(all.filter(g => BB.inRange(g.date, statFilter.preset) && BB.typeMatch(g, statFilter.type)));
+  const games = statsScope(all, statFilter.preset, statFilter.type, statFilter.recent);
   const totals = games.map(g => g.total);
   const avg = avgFloor(totals);
   const detailed = games.filter(g => g.frames);
@@ -32,7 +37,7 @@ RENDER.stats = function () {
   const series = Store.allSeries(games);
   const today = todayISO();
 
-  let h = '<div class="head-row"><h2 class="screen-title">My Stats</h2>' + (games.length ? '<button class="link-btn" id="stShare">' + icon('share') + 'Share</button>' : '') + '</div><div class="filters">' +
+  let h = '<div class="head-row"><h2 class="screen-title">My Stats</h2>' + (games.length ? '<button class="link-btn" id="stShare">' + icon('share') + 'Share</button>' : '') + '</div><div class="quick-filters" role="group" aria-label="Recent games">' + [0,12,30].map(n => '<button type="button" data-act="statsRecent" data-count="' + n + '" aria-pressed="' + (statFilter.recent === n && statFilter.preset === 'all') + '">' + (n ? 'Last ' + n + ' games' : 'All time') + '</button>').join('') + '</div><div class="filters">' +
     '<select id="stPreset" aria-label="Date range">' + BB.rangeOptions(statFilter.preset) + '</select>' +
     '<select id="stType" aria-label="Practice or league">' + BB.typeOptions(statFilter.type) + '</select></div>';
   if (!games.length) {
@@ -45,11 +50,12 @@ RENDER.stats = function () {
     const last = scoredGames(all.filter(g => I.seasonOf(g.date) === I.seasonOf(today) - 1 && BB.typeMatch(g, statFilter.type))).map(g => g.total);
     if (last.length >= 9) { const d = avg - avgFloor(last); if (d) delta = '<em class="' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '+' : '−') + Math.abs(d) + ' vs last season</em>'; }
   }
-  h += '<div class="card stats-hero"><div class="kicker">Your average</div><div class="stats-average">' + avg + '</div>' + delta + '<span class="small muted">' + plural(totals.length, 'scored game') + '</span></div>' +
+  h += '<div class="card stats-hero"><div class="kicker">Your average</div><div class="stats-average">' + (totals.reduce((a,b)=>a+b,0)/totals.length).toFixed(1) + '</div>' + delta + '<span class="small muted">' + plural(totals.length, 'scored game') + '</span></div>' +
     '<div class="stat-grid stats-records">' + card(Math.max(...totals), 'High game') +
     card(highSeries(series) || '—', 'High 3-game series') + '</div>' +
     '<div class="card stats-trend"><h3>Scores over time</h3><div id="chartScore"></div></div>';
 
+  if (ps.games) h += '<div class="stat-grid stats-quick-rates">' + card(pct(ps.strikes, ps.racks), 'Strike %') + card(pct(ps.spares, ps.spareOpps), 'Spare %') + card(pct(ps.frames - ps.openFrames, ps.frames), 'Fill %') + '</div>';
   const ins = I.insights(games, { today, max: 4 });
   if (ins.length) {
     h += '<div class="card insights"><h3>' + icon('sparkle') + 'What stands out</h3><ul>' +
@@ -87,7 +93,7 @@ RENDER.stats = function () {
   h += groupTable('By center', I.groupRows(games, g => g.centerId || null), k => Store.centerName(k));
   h += groupTable('By oil pattern', I.groupRows(games, g => (g.sheet ? null : g.pattern || 'Not recorded')), k => k, { col: 'Pattern' });
   h += '<details class="defs"><summary>How these are counted</summary><ul>' +
-    '<li><b>Average</b> drops the fraction, as leagues do (189.9 is 189).</li>' +
+    '<li><b>Average</b> on the overview shows one decimal; official league averages drop the fraction (189.9 is 189).</li><li><b>Fill %</b> = frames without an open ÷ frames recorded, using games with roll detail.</li>' +
     '<li><b>Strike %</b> = strikes ÷ strike chances. A chance is every ball thrown at a full rack, including 10th-frame fill balls after a strike or spare — a 300 is 12 for 12.</li>' +
     '<li><b>Spare %</b> = spares ÷ racks left standing after the first ball.</li>' +
     '<li><b>Single-pin</b> = spares made when the first ball counted 9.</li>' +
@@ -116,10 +122,12 @@ window.addEventListener('resize', () => {
     RENDER.stats();
   }, 200);
 });
+BB.ACT.stats = BB.ACT.stats || {};
+BB.ACT.stats.statsRecent = a => { statFilter.preset = 'all'; statFilter.recent = [12,30].includes(+a.dataset.count) ? +a.dataset.count : 0; RENDER.stats(); };
 function bindStatFilters() {
-  on('stPreset', 'change', e => { statFilter.preset = e.target.value; RENDER.stats(); });
+  on('stPreset', 'change', e => { statFilter.preset = e.target.value; statFilter.recent = 0; RENDER.stats(); });
   on('stType', 'change', e => { statFilter.type = e.target.value; RENDER.stats(); });
-  on('stShare', 'click', () => BB.shareCard('season', { preset: statFilter.preset, type: statFilter.type }));
+  on('stShare', 'click', () => BB.shareCard('season', { preset: statFilter.preset, type: statFilter.type, recent: statFilter.recent }));
 }
 // Official league numbers for leagues where you've marked yourself on the roster.
 function myLeagueStatsHTML() {

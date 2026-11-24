@@ -78,10 +78,10 @@ function nightSpec(p, opts) {
 
 function seasonSpec(p, opts) {
   const preset = p.preset || 'all';
-  const games = I.chrono(BB.gamePool().games.filter(g => BB.inRange(g.date, preset) && BB.typeMatch(g, p.type || '')));
+  const games = I.chrono(BB.statsScope(BB.gamePool().games, preset, p.type || '', p.recent || 0));
   if (!games.length) return null;
   const t = games.map(g => g.total);
-  const label = preset === 'season' ? I.seasonLabel(I.seasonOf(todayISO())) + ' SEASON' : (BB.RANGES.find(r => r[0] === preset) || ['', 'All time'])[1].toUpperCase();
+  const label = p.recent ? 'LAST ' + p.recent + ' GAMES' : preset === 'season' ? I.seasonLabel(I.seasonOf(todayISO())) + ' SEASON' : (BB.RANGES.find(r => r[0] === preset) || ['', 'All time'])[1].toUpperCase();
   const series = BB.highSeries(Store.allSeries(games));
   const typeName = p.type === '__practice' ? 'Practice' : p.type === '__league' ? 'League nights' : p.type ? ((Store.getLeague(p.type) || {}).name || '') : '';
   return {

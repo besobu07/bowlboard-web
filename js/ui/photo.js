@@ -14,10 +14,10 @@ const BB = window.BB;
 const S = window.BBScore, Store = window.BBStore, Scan = window.BBScan;
 const { RENDER, EMBED, esc, icon, on, el, toast, screenRoot, frameEditor } = BB;
 
-const photo = { setup: null, img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null };
+const photo = { directRow: true, setup: null, img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null };
 function resetPhoto(setup) {
   photo.setup = setup || photo.setup;
-  Object.assign(photo, { img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null });
+  Object.assign(photo, { directRow: true, img: null, thumb: null, crop: null, zoom: null, zoomImg: null, cropping: false, proc: null, draft: null, note: '', scanning: false, totals: [], scanned: false, checked: false, scan: null, view: '', rt: null });
 }
 function loadImage(src) {
   return new Promise((resolve, reject) => { const im = new Image(); im.onload = () => resolve(im); im.onerror = reject; im.src = src; });
@@ -369,15 +369,16 @@ RENDER.photo = function () {
     h += '<input type="file" id="photoFile" accept="image/*" capture="environment" hidden><input type="file" id="photoPick" accept="image/*" hidden>';
     h += '<button class="btn secondary mt8" id="manualBtn">Skip the photo — type it in</button>';
   } else {
-    const v = viewOf(), step1 = photo.cropping && !photo.zoom, bx = photo.crop && !step1 ? inView(photo.crop, v.r) : null;
+    const v = viewOf(), step1 = photo.cropping && !photo.zoom && !photo.directRow, bx = photo.crop && !step1 ? inView(photo.crop, v.r) : null;
     h += '<div class="crop-wrap' + (photo.cropping ? ' cropping' : '') + '" id="cropWrap"><img class="photo-preview" src="' + Store.safeImage(v.img) + '" alt="lane screen photo">' +
       (bx ? '<div class="crop-box" style="left:' + bx.x * 100 + '%;top:' + bx.y * 100 + '%;width:' + bx.w * 100 + '%;height:' + bx.h * 100 + '%"></div>' : '') + '</div>';
-    h += '<div class="small muted" id="cropHint">' + (step1 ? '<b>Step 1 of 2.</b> Drag a box around the electronic scoreboard to zoom in.' : photo.cropping ? '<b>Step 2 of 2.</b> Now drag a narrow box around only your row (all 10 frames and total)' + (photo.crop ? ', then tap Done.' : '.')
+    h += '<div class="small muted" id="cropHint">' + (step1 ? '<b>Step 1 of 2.</b> Drag a box around the electronic scoreboard to zoom in.' : photo.cropping ? '<b>Select your row.</b> Drag a narrow box around your 10 frames and final total' + (photo.crop ? ', then tap Done.' : '.')
       : photo.crop ? 'Only the selected player row will be read.' : 'Multiple players? Box in only your own row before scanning.') + '</div>';
     if (!EMBED) h += '<button class="btn mt8" id="scanBtn"' + (photo.scanning || (photo.cropping && !photo.crop) ? ' disabled' : '') + '>' + icon('sparkle') + (photo.scanning ? 'Reading…' : photo.scanned ? 'Read it again' : 'Read the screen') + '</button>';
     h += '<div class="row wrap mt8 photo-tools">' +
       (step1 ? '<button class="btn secondary small-btn" id="cropSkip">My row fills the photo</button>'
         : '<button class="btn secondary small-btn" id="cropBtn" aria-pressed="' + photo.cropping + '">' + icon('crop') + (photo.cropping ? 'Done' : photo.crop ? 'Re-box' : 'Box my row') + '</button>') +
+      (!photo.scanning && !photo.zoom && photo.directRow ? '<button class="btn secondary small-btn" id="zoomFirst">Zoom into scoreboard first</button>' : '') +
       (photo.cropping && photo.zoom ? '<button class="btn secondary small-btn" id="zoomOut">Zoom out</button><button class="btn secondary small-btn" id="cropAll">Use this whole view</button>' : '') +
       ((photo.crop || photo.zoom) && !photo.cropping ? '<button class="btn secondary small-btn" id="cropClear">Whole photo</button>' : '') +
       (photo.draft ? '' : '<button class="btn secondary small-btn" id="manualBtn">Type it in</button>') +
@@ -413,7 +414,7 @@ RENDER.photo = function () {
       photo.img = await downscale(raw, 3000, 0.9);   // a scoreboard across the room is a small part of the picture, so keep the detail
       photo.thumb = await downscale(raw, 1000, 0.72); // kept in IndexedDB, not in the main save file
     } catch (err) { toast('Could not read that image'); return; }
-    Object.assign(photo, { crop: null, zoom: null, zoomImg: null, cropping: true, proc: null, scan: null, scanned: false, note: '' });   // straight into boxing your row
+    Object.assign(photo, { directRow: true, crop: null, zoom: null, zoomImg: null, cropping: true, proc: null, scan: null, draft: null, totals: [], checked: false, scanned: false, note: '' });   // straight into boxing your row
     RENDER.photo();
   };
   on('photoFile', 'change', gotFile);
@@ -423,18 +424,24 @@ RENDER.photo = function () {
     if (photo.cropping && photo.zoom && !photo.crop) photo.crop = Object.assign({}, photo.zoom);   // zoomed in but no row boxed: read what is zoomed in on
     photo.cropping = !photo.cropping; RENDER.photo();
   });
-  on('cropSkip', 'click', () => { photo.cropping = false; photo.crop = null; RENDER.photo(); });
-  on('cropAll', 'click', () => { photo.crop = Object.assign({}, photo.zoom); photo.cropping = false; RENDER.photo(); });
+  on('zoomFirst', 'click', () => { photo.directRow = false; photo.crop = null; photo.cropping = true; invalidateScan(); RENDER.photo(); });
+  on('cropSkip', 'click', () => { photo.cropping = false; photo.crop = null; invalidateScan(); RENDER.photo(); });
+  on('cropAll', 'click', () => { photo.crop = Object.assign({}, photo.zoom); photo.cropping = false; invalidateScan(); RENDER.photo(); });
   on('zoomOut', 'click', () => { photo.zoom = null; photo.zoomImg = null; photo.crop = null; RENDER.photo(); });
-  on('cropClear', 'click', () => { photo.crop = null; photo.zoom = null; photo.zoomImg = null; RENDER.photo(); });
+  on('cropClear', 'click', () => { photo.crop = null; photo.zoom = null; photo.zoomImg = null; photo.directRow = true; invalidateScan(); RENDER.photo(); });
   on('manualBtn', 'click', () => { photo.draft = photo.draft || Scan.emptyDraft(); photo.note = ''; RENDER.photo(); });
   on('totalsBtn', 'click', () => { photo.view = 'totals'; RENDER.photo(); });
   on('copyScanBtn', 'click', copyScan);
   on('clearPhotoBtn', 'click', () => { resetPhoto(); RENDER.photo(); });
-  if (photo.cropping) bindCrop(el('cropWrap'));
+  if (photo.scanning) root.querySelectorAll('.photo-tools button').forEach(b => { b.disabled = true; });
+  if (photo.cropping && !photo.scanning) bindCrop(el('cropWrap'));
   if (photo.draft) bindReview(root, su);
 };
 
+function invalidateScan() {
+  if (photo.scanned || photo.scan) { photo.draft = null; photo.totals = []; }
+  photo.checked = false; photo.scanned = false; photo.scan = null; photo.proc = null; photo.note = '';
+}
 function bindCrop(wrap) {
   if (!wrap) return;
   const r = viewOf().r;
@@ -458,13 +465,14 @@ function bindCrop(wrap) {
     const c = cur; cur = null;
     if (!c || c.w <= 0.08 || c.h <= 0.04) { if (box && !photo.crop) box.remove(); return; }   // a tap, or too small to be a box
     const orig = { x: r.x + c.x * r.w, y: r.y + c.y * r.h, w: c.w * r.w, h: c.h * r.h };   // in the original photo's terms
-    if (!photo.zoom) {   // step 1: zoom in on the scoreboard
+    invalidateScan();
+    if (!photo.zoom && !photo.directRow) {   // optional zoom in on the scoreboard
       photo.zoom = orig; photo.zoomImg = null; photo.crop = null;
       makeZoom().then(() => RENDER.photo()).catch(() => { photo.zoom = null; photo.crop = orig; RENDER.photo(); });   // can't zoom: take it as the row
     } else { photo.crop = orig; RENDER.photo(); }   // step 2: your row
   };
   wrap.addEventListener('pointerup', end);
-  wrap.addEventListener('pointercancel', end);
+  wrap.addEventListener('pointercancel', () => { start = null; cur = null; RENDER.photo(); });
 }
 
 function bindReview(root, su) {
