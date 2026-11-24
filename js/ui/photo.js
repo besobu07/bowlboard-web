@@ -385,7 +385,7 @@ RENDER.photo = function () {
       '<button class="btn secondary small-btn" id="totalsBtn">Type the totals</button>' +
       '<button class="btn secondary small-btn" id="clearPhotoBtn">Retake</button></div>';
     if (photo.proc) h += '<details class="proc"><summary>What the scanner read</summary><img src="' + Store.safeImage(photo.proc) + '" alt="cleaned-up crop used for reading"><p class="small muted">If this looks like mush, retake the photo rather than fixing every frame.</p></details>';
-    if (photo.scan) h += '<div class="scan-tools"><button class="link-btn" id="copyScanBtn">' + icon('copy') + 'Copy scan details</button><span class="small muted">Email it to us if a scan goes wrong. It’s words only, no photo.</span></div>';
+    if (photo.scan) h += '<div class="scan-tools"><button class="link-btn" id="sendScanBtn">' + icon('mail') + 'Report a scan problem</button><button class="link-btn" id="copyScanBtn">' + icon('copy') + 'Copy scan details</button><span class="small muted">Opens an email to hello@bowlboard.app with what the scanner read: words and numbers only, no photo.</span></div>';
   }
   h += '<div class="scan-status" id="scanNote" aria-live="polite">' + esc(photo.note) + '</div>';
   if (photo.draft) {
@@ -432,6 +432,7 @@ RENDER.photo = function () {
   on('manualBtn', 'click', () => { photo.draft = photo.draft || Scan.emptyDraft(); photo.note = ''; RENDER.photo(); });
   on('totalsBtn', 'click', () => { photo.view = 'totals'; RENDER.photo(); });
   on('copyScanBtn', 'click', copyScan);
+  on('sendScanBtn', 'click', sendScan);
   on('clearPhotoBtn', 'click', () => { resetPhoto(); RENDER.photo(); });
   if (photo.scanning) root.querySelectorAll('.photo-tools button').forEach(b => { b.disabled = true; });
   if (photo.cropping && !photo.scanning) bindCrop(el('cropWrap'));
@@ -542,14 +543,40 @@ function renderTotals(root, su) {
 }
 
 /* ---------- copy scan details ---------- */
-function copyScan() {
+function scanText() {
   const sc = photo.scan;
-  if (!sc) return;
+  if (!sc) return '';
   const chk = photo.draft ? Scan.check(photo.draft) : null;
-  const text = Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, mostly: sc.mostly, agree: sc.agree, error: sc.error, note: sc.note,
+  return Scan.report({ version: BB.VERSION, when: new Date().toISOString(), photo: sc.photo, raw: sc.raw, lines: sc.lines, passes: sc.passes, detail: sc.detail, totals: sc.totals, fitted: sc.fitted, confirmed: sc.confirmed, mostly: sc.mostly, agree: sc.agree, error: sc.error, note: sc.note,
     draft: photo.draft, total: chk && chk.ok && chk.complete ? chk.total : null, checked: photo.draft && photo.scanned ? photo.checked : null });
+}
+function copyScan() {
+  const text = scanText();
+  if (!text) return;
   BB.copyText(text).then(ok => {
     if (ok) toast('Copied. Paste it into an email to hello@bowlboard.app', 4500);
+    else BB.textSheet('scan-details.txt', text);
+  });
+}
+// An email to us with the scan's words and numbers (never the photo). Mail apps cut off long links, so a long report is
+// copied instead and the email says to paste it. In the sandboxed build, which can't open mail, it is just copied.
+const MAIL_BODY_MAX = 1400;
+function scanMail(text, version) {
+  const subject = 'BowlBoard scan problem (' + version + ')';
+  const intro = 'What went wrong (optional): \n\n';
+  const long = encodeURIComponent(intro + text).length > MAIL_BODY_MAX;
+  const body = long ? intro + '[The scan details are copied. Paste them below.]\n\n' : intro + text;
+  return { href: 'mailto:hello@bowlboard.app?subject=' + encodeURIComponent(subject) + '&body=' + encodeURIComponent(body), long };
+}
+function sendScan() {
+  const text = scanText();
+  if (!text) return;
+  const m = scanMail(text, BB.VERSION);
+  if (EMBED) { copyScan(); return; }
+  const open = () => { window.location.href = m.href; };
+  if (!m.long) { open(); return; }
+  BB.copyText(text).then(ok => {
+    if (ok) { toast('Scan details copied. Paste them into the email.', 4500); setTimeout(open, 600); }
     else BB.textSheet('scan-details.txt', text);
   });
 }
@@ -647,5 +674,5 @@ photo.setDraft = (balls, opts) => {
 };
 
 window.BBPhoto = photo;
-Object.assign(BB, { resetPhoto, preparePhoto: prepare, prepareMask, maskToPNG, scalePhoto: scaled });
+Object.assign(BB, { resetPhoto, preparePhoto: prepare, prepareMask, maskToPNG, scalePhoto: scaled, scanMail });
 })();
