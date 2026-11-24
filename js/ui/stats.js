@@ -32,7 +32,7 @@ RENDER.stats = function () {
   const series = Store.allSeries(games);
   const today = todayISO();
 
-  let h = '<div class="head-row"><h2 class="screen-title">Stats</h2>' + (games.length ? '<button class="link-btn" id="stShare">' + icon('share') + 'Share</button>' : '') + '</div><div class="filters">' +
+  let h = '<div class="head-row"><h2 class="screen-title">My Stats</h2>' + (games.length ? '<button class="link-btn" id="stShare">' + icon('share') + 'Share</button>' : '') + '</div><div class="filters">' +
     '<select id="stPreset" aria-label="Date range">' + BB.rangeOptions(statFilter.preset) + '</select>' +
     '<select id="stType" aria-label="Practice or league">' + BB.typeOptions(statFilter.type) + '</select></div>';
   if (!games.length) {
@@ -45,8 +45,10 @@ RENDER.stats = function () {
     const last = scoredGames(all.filter(g => I.seasonOf(g.date) === I.seasonOf(today) - 1 && BB.typeMatch(g, statFilter.type))).map(g => g.total);
     if (last.length >= 9) { const d = avg - avgFloor(last); if (d) delta = '<em class="' + (d > 0 ? 'up' : 'down') + '">' + (d > 0 ? '+' : '−') + Math.abs(d) + ' vs last season</em>'; }
   }
-  h += '<div class="stat-grid">' + card(avg, 'Average', delta) + card(Math.max(...totals), 'High game') +
-    card(highSeries(series) || '—', 'High 3-game series') + card(totals.length, 'Games') + '</div>';
+  h += '<div class="card stats-hero"><div class="kicker">Your average</div><div class="stats-average">' + avg + '</div>' + delta + '<span class="small muted">' + plural(totals.length, 'scored game') + '</span></div>' +
+    '<div class="stat-grid stats-records">' + card(Math.max(...totals), 'High game') +
+    card(highSeries(series) || '—', 'High 3-game series') + '</div>' +
+    '<div class="card stats-trend"><h3>Scores over time</h3><div id="chartScore"></div></div>';
 
   const ins = I.insights(games, { today, max: 4 });
   if (ins.length) {
@@ -61,7 +63,6 @@ RENDER.stats = function () {
     '<div class="small muted">Your last ' + plural(last5.length, 'game') + ', oldest first. Highlighted = at or above your ' + avg + ' average.</div>' +
     (cons ? '<div class="consistency"><b>±' + cons.sd + ' pins</b><span>Most of your games land between <b>' + cons.lo + '</b> and <b>' + cons.hi + '</b>. Smaller is steadier.</span></div>' : '') + '</div>';
 
-  h += '<div class="card"><h3>Scores over time</h3><div id="chartScore"></div></div>';
   if (detailed.length) h += '<div class="card"><h3>Strike % and spare %</h3><div id="chartRate"></div></div>';
   if (ps.games) {
     h += '<div class="stat-grid four">' + card(pct(ps.strikes, ps.racks), 'Strike %') + card(pct(ps.spares, ps.spareOpps), 'Spare %') +
@@ -74,7 +75,7 @@ RENDER.stats = function () {
     }
     if (detailed.length < games.length) h += '<p class="small muted">Strike, spare and leave stats use the ' + detailed.length + ' of ' + games.length + ' games with frame detail. Total-only, running-total and league-sheet games count toward average and highs only.</p>';
   } else {
-    h += '<p class="small muted">Enter games pin by pin (or check a lane-screen photo) to unlock strike %, spare %, splits and leave stats.</p>';
+    h += '<p class="small muted">Enter individual rolls (or verify a lane-screen photo) to unlock strike and spare stats. Track exact pins to unlock detailed leave and split stats.</p>';
   }
   const prac = games.filter(g => !g.leagueId).map(g => g.total), lgn = games.filter(g => g.leagueId).map(g => g.total);
   if (prac.length && lgn.length && !statFilter.type) {

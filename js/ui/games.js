@@ -54,7 +54,7 @@ function calendarHTML(games, month) {
 
 RENDER.history = function () {
   const root = screenRoot();
-  let h = '<div class="head-row"><h2 class="screen-title">History</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '</div><div class="filters">';
+  let h = '<div class="head-row"><h2 class="screen-title">Games</h2>' + (myGames().length ? '<button class="link-btn" id="hfExport">' + icon('download') + 'Export</button>' : '') + '</div><div class="filters">';
   h += '<select id="hfPreset" aria-label="Date range">' + rangeOptions(histFilter.preset) + '</select>';
   h += '<select id="hfType" aria-label="Practice or league">' + typeOptions(histFilter.type) + '</select>';
   h += '<select id="hfCenter" aria-label="Center"><option value="">All centers</option>' +
@@ -66,6 +66,8 @@ RENDER.history = function () {
     (!histFilter.center || g.centerId === histFilter.center) &&
     (!histFilter.ball || (!g.sheet && (histFilter.ball === '__house' ? !g.ballId : g.ballId === histFilter.ball))));
   const series = Store.allSeries(games);
+  const scored = games.filter(g => Number.isFinite(g.total));
+  if (scored.length) h += '<div class="history-summary"><div><b>' + scored.length + '</b><small>Games</small></div><div><b>' + Math.floor(scored.reduce((sum,g) => sum + g.total, 0) / scored.length) + '</b><small>Average</small></div><div><b>' + Math.max(...scored.map(g => g.total)) + '</b><small>High game</small></div></div>';
   if (histFilter.view === 'calendar') h += calendarHTML(games, histFilter.month);
   else h += series.length ? series.map(seriesCardHTML).join('') : '<div class="empty">' + (myGames().length ? 'No games match these filters.' : 'No games yet.<br><button class="btn small-btn secondary mt8" id="hfImport">' + icon('upload') + 'Import scores from a file</button>') + '</div>';
   h += '</div>';

@@ -359,6 +359,7 @@ RENDER.photo = function () {
       '<input type="file" id="photoPick" accept="image/*" hidden>';
   } else if (!photo.img) {
     h += '<p class="mt0">' + icon('screen') + ' <b>Scan your final scoreboard</b></p>' +
+      '<figure class="scan-example"><img src="scan-example.svg" alt="Electronic lane scoreboard showing three completed games with an amber box around only Player 2"><figcaption>Example: select just your row, not the entire screen.</figcaption></figure>' +
       '<ul class="tips"><li>Take it when your game is finished.</li><li>Photograph the electronic lane scoreboard, even if it shows several players.</li><li>Crop to just your row, including all 10 frames and the final total.</li><li>Tilt a little to dodge glare, and hold still for a second.</li></ul>' +
       (EMBED ? '<p class="small muted">Here you can keep the photo with the game and type the frames in; reading the screen works in the installed app.</p>' : '<p class="small muted">BowlBoard drafts the frames from the photo. You check every one before it’s saved.</p>');
     // Two pickers: "capture" opens the camera straight away (and on an iPhone leaves no way to pick from the library),
