@@ -184,7 +184,7 @@ ok(pdf1 instanceof Uint8Array, 'bytes');
 ok(P1.okHeader && P1.okEnd && P1.xrefOk && P1.offsetsOk && P1.entryLen, 'header, cross-reference table and end marker are all in place', { h: P1.okHeader, e: P1.okEnd, x: P1.xrefOk, o: P1.offsetsOk });
 eq(P1.pages, 1, 'six games fit on one page');
 eq(P1.media, [612, 792], 'US letter');
-ok(/Page 1 of 1/.test(P1.text) && /Built for Bowlers/.test(P1.text) && /your data stays on your device/.test(P1.text), 'branding and page number');
+ok(/Page 1 of 1/.test(P1.text) && /Built for Bowlers/.test(P1.text) && /your data is yours/.test(P1.text), 'branding and page number');
 ok(/\(546\)/.test(P1.text) && /\(189\)/.test(P1.text) && /\(300\)/.test(P1.text), 'the headline numbers are printed');
 ok(/\(180 \\267 201 \\267 165\)/.test(P1.text), 'each night lists its games');
 ok(/2026\\22627/.test(P1.text), 'season labels use a proper dash');

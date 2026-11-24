@@ -181,7 +181,7 @@
 
     pages.forEach((pg, i) => {
       pg.line(M, H - 34, doc.width - M, H - 34, { color: RULE, width: 0.6 });
-      pg.text(M, H - 22, 'BowlBoard · bowlboard.app · your data stays on your device', { size: 8, color: GREY });
+      pg.text(M, H - 22, 'BowlBoard · bowlboard.app · your data is yours', { size: 8, color: GREY });
       pg.text(doc.width - M, H - 22, 'Page ' + (i + 1) + ' of ' + pages.length, { size: 8, color: GREY, align: 'right' });
     });
     return doc.build();
