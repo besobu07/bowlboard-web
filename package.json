@@ -1,0 +1,14 @@
+{
+  "name": "bowlboard-web",
+  "private": true,
+  "description": "BowlBoard web app: tests only. The app itself is static files and needs no build.",
+  "scripts": {
+    "test": "node tools/stamp-sw.js --check && npm run test:unit && node test/smoke.test.js",
+    "test:unit": "node test/score.test.js && node test/scan.test.js && node test/glyphs.test.js && node test/achievements.test.js && node test/league.test.js && node test/games_import.test.js && node test/export.test.js && node test/insights.test.js && node test/store.test.js",
+    "smoke": "node test/smoke.test.js",
+    "stamp": "node tools/stamp-sw.js"
+  },
+  "devDependencies": {
+    "playwright": "^1.50.0"
+  }
+}
